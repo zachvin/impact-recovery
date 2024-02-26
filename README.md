@@ -44,3 +44,26 @@ The model will be evaluated on a number of factors, each of which must be includ
 
 ## Testing
 After the training of a neural net that maximizes its average score, the first tests will be visual assessment of the trained network's performance within Gazebo. Following several iterations of these visual assessments and provided enough time left in the semester, physical tests may be conducted using a quadcopter with an onboard companion computer running the neural network.
+
+
+# Part Two
+## Source
+All of the data in this project will be generated during training time using the Gazebo physics simulator. Because there is no data to download, this part 2 submission will show a proof-of-concept for reading data from the simulation programmatically. Gazebo outputs a set of information topics that can be bridged to ROS topics using a separate ROS package. My python software then subscribes to those topics and will use the data it receives for the neural network input.
+
+
+## Distinct subjects represented in data
+The data included in the proof-of-concept only shows the linear acceleration along the Z axis for simplicity. However, the full dataset used for training includes:
+1. X, Y, Z linear acceleration
+2. Roll, pitch, yaw angular acceleration
+3. Time
+4. Absolute position in 3D space
+
+
+## Training vs. testing
+The data used for training will include all of the above topics. The only data point not used in testing is the absolute position of the drone in 3D space, since this is impractical to achieve on a real drone. Therefore, the absolute position data will only be used for the cost function to minimize overall displacement during impact recovery, prioritizing models that achieve quick stability, but the network itself will not utilize this information.
+
+## Characterization of samples
+All of the data are represented as float values. The samples come from a virtualized IMU. Sampling frequency can be controlled easily within the simulator, so this will require fine-tuning during training to ensure that training is not too resource-intensive.
+
+## Data samples
+> Because the data is scraped from the simulator, it is not feasible to reproduce the results until a Docker image is produced (this will also allow for easy development on a laptop while outsourcing the training to more powerful hardware). As a result, the files used to produce the data samples are included in this repository for proof of completion, but do not include their dependencies (i.e. ROS packages, setup files, etc.)
