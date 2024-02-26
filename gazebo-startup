@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# start gazebo
+# start SITL
+# takeoff drone
+# save drone starting location
+
+# for n in epochs:
+#   move drone to starting location
+#   random impact
+
+# open Gazebo in new terminal
+gnome-terminal --tab -- /bin/bash -c "gz sim -v4 -r iris_runway.sdf"
+
+# start ros gz bridge in new terminal
+gnome-terminal --tab -- /bin/bash -c "cd ~/rosgz_ws;source install/setup.bash;ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/home/zach/ros2_ws/src/coptersim/coptersim/topics.yaml"
+
+# start Ardupilot SITL in current terminal
+cd ~;
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --map --console;
