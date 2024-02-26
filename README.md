@@ -68,5 +68,15 @@ All of the data are represented as float values. The samples come from a virtual
 ## Data samples
 > Because the data is scraped from the simulator, it is not feasible to reproduce the results until a Docker image is produced (this will also allow for easy development on a laptop while outsourcing the training to more powerful hardware). As a result, the files used to produce the data samples are included in this repository for proof of completion, but do not include their dependencies (i.e. ROS packages, setup files, etc.)
 
+`ionode.py` - Python script that exists in a ROS package; subscribes to `copter_imu` ROS topic and writes data to `testdata.txt`.
+
+`testdata.txt` - Text values of data visualized below.
+
+`gazebo-startup` - Shell script that automates starting Gazebo, Ardupilot SITL, and the ROS topic bridge.
+
+`topics.yaml` - Config file that contains all ROS/Gazebo topic bridging information.
+
+
 ![image](https://github.com/zachvin/impact-recovery/assets/43306216/9a8e792e-3dfa-4dfa-b5fb-ff06067f4bd1)
+
 At ~4000, the drone takes off vertically 10 meters. The data becomes significantly noisier, and at ~6500, the drone rotates about the Z axis, causing a shift in the acceleration values.
