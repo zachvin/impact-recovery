@@ -3,12 +3,10 @@ from gym_pybullet_drones.envs.HoverAviary import BaseRLAviary
 
 class RecoveryAviary(BaseRLAviary):
     def _computeReward(self):
-        """Computes the current reward value(s).
-
-        Must be implemented in a subclass.
-
         """
-        raise NotImplementedError
+        Computes current reward value.
+        """
+        return 1
 
     ################################################################################
 
@@ -18,7 +16,7 @@ class RecoveryAviary(BaseRLAviary):
         Must be implemented in a subclass.
 
         """
-        raise NotImplementedError
+        return False
     
     ################################################################################
 
@@ -28,4 +26,9 @@ class RecoveryAviary(BaseRLAviary):
         Must be implemented in a subclass.
 
         """
-        raise NotImplementedError
+        return False
+    
+    def _computeInfo(self):
+        return None
+    
+    
