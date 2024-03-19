@@ -1,6 +1,8 @@
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
+from gym_pybullet_drones.envs.HoverAviary import HoverAviary
 import sys
+import torch as T
 
 sys.path.insert(1, '../util/')
 sys.path.insert(1, '../env/')
@@ -15,38 +17,53 @@ KIN = ObservationType('kin')
 
 def run(agent, env):
 
-    num_games   = 10 # number of total games to be run
+    num_games   = 300 # number of total games to be run
+    avg_size    = 100 # number of samples used in running average
 
     for i in range(num_games):
         score = 0
 
         # obs: Box() of shape (NUM_DRONES,12)
         obs, info = env.reset()
+
         term, trunc = False, False
 
         while not term and not trunc:
-            # choose action
-            action = agent.choose_action()
 
-            # get reward, new observation
-            obs_, reward, term, trunc, info = env.step(action)
-            score += reward
+            # get action and value data for current state
+            obs = T.FloatTensor(np.reshape(obs, (-1, 12))[0])
 
-            # store memory and learn
-            agent.memory.append(obs, action, reward, obs_, term or trunc)
-            agent.learn()
+            action = agent.choose_action(obs)
+            value = agent.critic(obs)
+
+            obs_, reward, term, trunc, info = env.step(np.reshape(action, (1, 4)))
+            obs_ = T.FloatTensor(np.reshape(obs_, (-1, 12))[0])
+
+            value_ = agent.critic(obs_)
+
+            # calculate and backpropagate loss
+            agent.back(obs, reward, value, value_, term or trunc)
 
             # update observation
             obs = obs_
+            score += reward
+
+            if term or trunc:
+                break
+
+        print(f"Episode: {i + 1}, Reward: {score}, Eps: {agent.epsilon}")
 
         agent.scores.append(score)
-        agent.avg_score = np.mean(agent.scores[-agent.avg_size:])
+        agent.avg_score = np.mean(agent.scores[-avg_size:])
         agent.avgs.append(agent.avg_score)
 
         # save network weights after improving
+        '''
         if agent.avg_score > agent.max_score:
-            agent.save_weights()
+            agent.save_models()
             agent.max_score = agent.avg_score
+            '''
+    agent.save_stats()
 
 
 def save_training_data(sig, frame):
@@ -59,7 +76,7 @@ def save_training_data(sig, frame):
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, save_training_data)
 
-    env = RecoveryAviary.RecoveryAviary(act=RPM, obs=KIN, gui=True)
+    env = HoverAviary(act=RPM, obs=KIN, gui=True)
     agent = DRL.Agent()
     run(agent, env)
     

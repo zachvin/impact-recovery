@@ -1,7 +1,8 @@
 import numpy as np
+import torch as T
 
 class Memory():
-    def __init__(self, state_shape, mem_size=50, num_motors=4):
+    def __init__(self, device, state_shape, mem_size=50, num_motors=4):
         """
         Initialization of Memory buffer object. Includes simple methods for
         saving and retrieving memories.
@@ -15,6 +16,8 @@ class Memory():
         Returns:
             Memory object
         """
+
+        self.device = device
 
         self.mem_size = mem_size
         self.i = 0
@@ -63,5 +66,15 @@ class Memory():
         Returns:
             np.array of shape (batch_size, -1)
         """
+        max_mem = min(self.i, self.mem_size)
 
-        raise NotImplementedError
+        batch = np.random.choice(max_mem, batch_size, replace=False)
+
+        obs     = T.tensor(self.mem_state[batch]).to(self.device)
+        obs_    = T.tensor(self.mem_new_state[batch]).to(self.device)
+        actions = T.tensor(self.mem_action[batch]).to(self.device)
+        rewards = T.tensor(self.mem_reward[batch]).to(self.device)
+        terms   = T.tensor(self.mem_terminal[batch]).to(self.device)
+
+        return obs, actions, rewards, obs_, terms
+
