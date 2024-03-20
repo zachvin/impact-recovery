@@ -1,20 +1,14 @@
 import numpy as np
 import torch as T
 import torch.nn as nn
-from torch.distributions import Categorical
-import torch.nn.functional as F
-from collections import namedtuple
-import Network
 import Memory
 import json
 
-SavedAction = namedtuple('SavedAction', ['log_prob', 'value'])
-
 class Agent():
         
-    def __init__(self, epsilon=1, batch_size=32, replace=50, tau=0.001,
-                 gamma=0.99, min_epsilon=0.01, lr_actor=1e-3, lr_critic=1e-3,
-                 explore=False):
+    def __init__(self, epsilon=1, batch_size=16, tau=0.001, gamma=0.99,
+                 min_epsilon=0.01, lr_actor=1e-3, lr_critic=1e-3,
+                 explore=False, learn_threshold=50):
         """
         Initializes a deep reinforcement learning model agent.
         Params
@@ -32,8 +26,8 @@ class Agent():
 
         self.actor = nn.Sequential(
             nn.Linear(12, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
+            #nn.ReLU(),
+            #nn.Linear(50, 50),
             nn.ReLU(),
             nn.Linear(50, 4),
             nn.Tanh()  # Ensures action outputs are between -1 and 1
@@ -42,8 +36,8 @@ class Agent():
 
         self.critic = nn.Sequential(
             nn.Linear(12, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
+            #nn.ReLU(),
+            #nn.Linear(50, 50),
             nn.ReLU(),
             nn.Linear(50, 1)  # Outputting a single value for the state value
         )
@@ -58,19 +52,20 @@ class Agent():
 
         # hyperparameters
         self.epsilon = epsilon
+        if not explore:
+            self.epsilon = 0
         self.min_epsilon = min_epsilon
         self.epsilon_dec_rate = 0.001
         self.explore = explore
 
         self.batch_size = batch_size
-        self.replace = replace
+        self.learn_threshold = learn_threshold
         self.tau = tau
         self.gamma = gamma
 
         # other vars
-        self.learn_counter = 0
-        self.saved_actions = []
         self.rewards = []
+        self.epsilons = []
 
     def choose_action(self, state):
         """
@@ -86,7 +81,7 @@ class Agent():
         action = None
         if self.explore and np.random.rand() < self.epsilon:
             # choose random
-            action = np.random.rand(1,4)
+            action = (np.random.rand(1,4) - 0.5) * 20
 
         else:
             # choose learned action
@@ -119,46 +114,23 @@ class Agent():
         Neural network back propagation based on past experiences from memory
         buffer sampling.
         """
-        return
+        # determine if there are enough memories to learn
+        if self.memory.i < self.batch_size:
+            return
+                
+        # get memory
+        obs, obs_, reward, done = self.memory.sample(self.batch_size)
+        obs = T.FloatTensor(obs)
+        obs_ = T.FloatTensor(obs_)
 
-        R = 0
-        saved_actions = self.saved_actions
-        policy_losses = [] # list to save actor (policy) loss
-        value_losses = [] # list to save critic (value) loss
-        returns = [] # list to save the true values
+        for i in range(len(obs)):
+            # calculate values
+            value = self.critic(obs[i])
+            value_ = self.critic(obs_[i])
 
-        # calculate the true value using rewards returned from the environment
-        for r in self.rewards[::-1]:
-            # calculate the discounted value
-            R = r + self.gamma * R
-            returns.insert(0, R)
-
-        returns = T.tensor(returns)
-        returns = (returns - returns.mean()) / (returns.std() + self.epsilon)
-
-        for (log_prob, value), R in zip(saved_actions, returns):
-            advantage = R - value.item()
-
-            # calculate actor (policy) loss
-            policy_losses.append(-log_prob * advantage)
-
-            # calculate critic (value) loss using L1 smooth loss
-            value_losses.append(F.smooth_l1_loss(value, T.tensor([R])))
-
-        # reset gradients
-        self.optimizer.zero_grad()
-
-        # sum up all the values of policy_losses and value_losses
-        loss = T.stack(policy_losses).sum() + T.stack(value_losses).sum()
-
-        # perform backprop
-        loss.backward()
-        self.optimizer.step()
-
-        # reset rewards and action buffer
-        del self.rewards[:]
-        del self.saved_actions[:]
-
+            # self.back()
+            self.back(obs[i], reward[i], value, value_, done[i])
+        
 
     def soft_target_update(self):
         """
@@ -174,16 +146,7 @@ class Agent():
             target_net_weights[key] = self.tau*policy_net_weights[key] + \
                 (1-self.tau)*target_net_weights[key]
             
-        self.target.load_state_dict(target_net_weights)
-        
-
-    def hard_target_update(self):
-        """
-        Copies current network to target network.
-        """
-        if self.learn_counter % self.replace == 0:
-            self.target.load_state_dict(self.policy.state_dict())
-        
+        self.target.load_state_dict(target_net_weights)        
 
     def save_models(self):
         """
@@ -206,17 +169,28 @@ class Agent():
         Saves training statistics when training is completed or interrupted.
         """
 
+        resp = input('Save training data? [y/N]: ')
+
+        if 'y' not in resp.lower():
+            print('Not saving data.')
+            return
+
         if self.avg_score == -np.inf:
             print('No data to be saved.')
             return
 
-        fname = f'training_data_{int(self.avg_score)}.json'
+        fname = f'../data/training_data_{int(self.avg_score)}.json'
     
         data = {
             'avgs': self.avgs,
-            'scores': self.scores
+            'scores': self.scores,
+            'epsilons': self.epsilons
         }
+
+        print(f'Writing to {fname}... ', end='')
 
         data_json = json.dumps(data)
         with open(fname, 'w') as f:
             f.write(data_json)
+
+        print('done.')

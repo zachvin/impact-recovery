@@ -18,7 +18,7 @@ KIN = ObservationType('kin')
 def run(agent, env):
 
     num_games   = 300 # number of total games to be run
-    avg_size    = 100 # number of samples used in running average
+    avg_size    = 10 # number of samples used in running average
 
     for i in range(num_games):
         score = 0
@@ -31,18 +31,18 @@ def run(agent, env):
         while not term and not trunc:
 
             # get action and value data for current state
-            obs = T.FloatTensor(np.reshape(obs, (-1, 12))[0])
+            obs = np.reshape(obs, (-1, 12))[0]
 
-            action = agent.choose_action(obs)
-            value = agent.critic(obs)
+            action = agent.choose_action(T.FloatTensor(obs))
 
             obs_, reward, term, trunc, info = env.step(np.reshape(action, (1, 4)))
-            obs_ = T.FloatTensor(np.reshape(obs_, (-1, 12))[0])
+            obs_ = np.reshape(obs_, (-1, 12))[0]
 
-            value_ = agent.critic(obs_)
+            # add memory
+            agent.memory.append(obs, obs_, reward, term)
 
-            # calculate and backpropagate loss
-            agent.back(obs, reward, value, value_, term or trunc)
+            # learn
+            agent.learn()
 
             # update observation
             obs = obs_
@@ -56,6 +56,7 @@ def run(agent, env):
         agent.scores.append(score)
         agent.avg_score = np.mean(agent.scores[-avg_size:])
         agent.avgs.append(agent.avg_score)
+        agent.epsilons.append(agent.epsilon)
 
         # save network weights after improving
         '''
@@ -67,16 +68,19 @@ def run(agent, env):
 
 
 def save_training_data(sig, frame):
-    print('Closing training...')
+    print('\n\nClosing training...')
 
     global agent
     agent.save_stats()
+
+    print('\n')
     sys.exit()
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, save_training_data)
 
-    env = HoverAviary(act=RPM, obs=KIN, gui=True)
-    agent = DRL.Agent()
+    env = RecoveryAviary.RecoveryAviary(act=RPM, obs=KIN, gui=False)
+    agent = DRL.Agent(explore=False, batch_size=32)
+
     run(agent, env)
     

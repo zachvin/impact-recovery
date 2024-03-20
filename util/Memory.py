@@ -2,7 +2,7 @@ import numpy as np
 import torch as T
 
 class Memory():
-    def __init__(self, device, state_shape, mem_size=50, num_motors=4):
+    def __init__(self, device, state_shape, mem_size=20000, num_motors=4):
         """
         Initialization of Memory buffer object. Includes simple methods for
         saving and retrieving memories.
@@ -23,41 +23,35 @@ class Memory():
         self.i = 0
 
         self.state      = np.zeros((self.mem_size, state_shape), dtype=np.float32)
-        self.new_state  = np.zeros((self.mem_size, state_shape), dtype=np.float32)
-        self.action     = np.zeros((self.mem_size, num_motors), dtype=np.float32)
+        self.state_     = np.zeros((self.mem_size, state_shape), dtype=np.float32)
         self.reward     = np.zeros(self.mem_size, dtype=np.float32)
-        self.terminal   = np.zeros(self.mem_size, dtype=np.bool_)
+        self.done       = np.zeros(self.mem_size, dtype=np.bool_)
 
-    def append(self, obs, action, reward, obs_, term):
+    def append(self, obs, obs_, reward, done):
         """
         Add a single or batch memory to the Memory buffer.
         Params:
             obs : np.float32
                 Current state
-            action : np.float32
-                Action taken
+            obs_ : np.float32
+                Next state
             reward : np.float32
                 Reward for action
-            obs_ : np.float32
-                State following action
-            term : np.bool_
+            done : np.bool_
                 Whether simulation has terminated or truncated
         """
-        num_mems = obs.shape[1]//12
 
-        # add each memory in batch to the buffer
-        for j in range(num_mems):
-            index = self.i % self.mem_size
+        # TODO memory interpolation
+        index = self.i % self.mem_size
 
-            self.state[index]       = np.reshape(obs, (-1, 12))[j]
-            self.new_state[index]   = np.reshape(obs_, (-1, 12))[j]
-            self.action[index]      = action
-            self.reward[index]      = reward
-            self.terminal[index]    = term
+        self.state[index]       = obs
+        self.state_[index]      = obs_
+        self.reward[index]      = reward
+        self.done[index]        = done
 
-            self.i += 1
+        self.i += 1
 
-    def sample(self, batch_size=10):
+    def sample(self, batch_size=32):
         """
         Samples Memory buffer and returns batch_size number of memories.
         Params:
@@ -70,11 +64,10 @@ class Memory():
 
         batch = np.random.choice(max_mem, batch_size, replace=False)
 
-        obs     = T.tensor(self.mem_state[batch]).to(self.device)
-        obs_    = T.tensor(self.mem_new_state[batch]).to(self.device)
-        actions = T.tensor(self.mem_action[batch]).to(self.device)
-        rewards = T.tensor(self.mem_reward[batch]).to(self.device)
-        terms   = T.tensor(self.mem_terminal[batch]).to(self.device)
+        obs     = self.state[batch]
+        obs_    = self.state_[batch]
+        rewards = self.reward[batch]
+        dones   = self.done[batch]
 
-        return obs, actions, rewards, obs_, terms
+        return obs, obs_, rewards, dones
 
