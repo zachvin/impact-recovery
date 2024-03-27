@@ -26,8 +26,8 @@ class Agent():
 
         self.actor = nn.Sequential(
             nn.Linear(12, 50),
-            #nn.ReLU(),
-            #nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
             nn.ReLU(),
             nn.Linear(50, 4),
             nn.Tanh()  # Ensures action outputs are between -1 and 1
@@ -36,8 +36,8 @@ class Agent():
 
         self.critic = nn.Sequential(
             nn.Linear(12, 50),
-            #nn.ReLU(),
-            #nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
             nn.ReLU(),
             nn.Linear(50, 1)  # Outputting a single value for the state value
         )
@@ -82,10 +82,14 @@ class Agent():
         if self.explore and np.random.rand() < self.epsilon:
             # choose random
             action = (np.random.rand(1,4) - 0.5) * 20
+            print('Random: ', end='')
 
         else:
             # choose learned action
-            action = self.actor(state).detach().numpy()
+            print('Learned: ', end='')
+            action = self.actor(state).detach().numpy() * 20
+
+        print(action)
 
         if self.explore: self._decrement_epsilon()
         return action
@@ -128,7 +132,6 @@ class Agent():
             value = self.critic(obs[i])
             value_ = self.critic(obs_[i])
 
-            # self.back()
             self.back(obs[i], reward[i], value, value_, done[i])
         
 
@@ -153,16 +156,16 @@ class Agent():
         Saves current state dict for policy and target nets.
         """
 
-        self.policy_net.save()
-        self.target_net.save()
+        T.save(self.actor.state_dict(), f'state_dict_actor')
+        T.save(self.critic.state_dict(), f'state_dict_critic')
 
     def load_models(self):
         """
         Loads state dicts for policy and target nets.
         """
 
-        self.policy_net.load('policy_net')
-        self.target_net.load('target_net')
+        self.actor.load_state_dict(T.load(f'state_dict_actor'))
+        self.critic.load_state_dict(T.load(f'state_dict_critic'))
 
     def save_stats(self):
         """

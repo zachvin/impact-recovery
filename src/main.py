@@ -8,7 +8,7 @@ sys.path.insert(1, '../util/')
 sys.path.insert(1, '../env/')
 
 import DRL
-import RecoveryAviary
+from RecoveryAviary import RecoveryAviary
 import numpy as np
 import signal
 
@@ -17,7 +17,7 @@ KIN = ObservationType('kin')
 
 def run(agent, env):
 
-    num_games   = 300 # number of total games to be run
+    num_games   = 1000 # number of total games to be run
     avg_size    = 10 # number of samples used in running average
 
     for i in range(num_games):
@@ -39,7 +39,7 @@ def run(agent, env):
             obs_ = np.reshape(obs_, (-1, 12))[0]
 
             # add memory
-            agent.memory.append(obs, obs_, reward, term)
+            agent.memory.append(obs, obs_, reward, term, clip=True)
 
             # learn
             agent.learn()
@@ -51,7 +51,7 @@ def run(agent, env):
             if term or trunc:
                 break
 
-        print(f"Episode: {i + 1}, Reward: {score}, Eps: {agent.epsilon}")
+        print(f"Episode: {i + 1}\tReward: {score:.2f}\tEps: {agent.epsilon:.3f}")
 
         agent.scores.append(score)
         agent.avg_score = np.mean(agent.scores[-avg_size:])
@@ -64,23 +64,37 @@ def run(agent, env):
             agent.save_models()
             agent.max_score = agent.avg_score
             '''
+
     agent.save_stats()
 
 
 def save_training_data(sig, frame):
-    print('\n\nClosing training...')
 
     global agent
+
+    #print(f'velo: ({agent.memory.minv}, {agent.memory.maxv}) avel: ({agent.memory.mina}, {agent.memory.maxa})')
+    print('\n\nClosing training...')
+
     agent.save_stats()
 
     print('\n')
     sys.exit()
 
+sys.path.insert(1, '../ppo/')
+from ppo import PPO
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, save_training_data)
 
-    env = RecoveryAviary.RecoveryAviary(act=RPM, obs=KIN, gui=False)
-    agent = DRL.Agent(explore=False, batch_size=32)
+    env = RecoveryAviary(act=ActionType.RPM, obs=ObservationType.KIN, gui=True, ctrl_freq=480, pyb_freq=480)
+    agent = PPO(env, use_network=True)
+    agent.learn(100000)
+
+    agent.save_stats()
+    sys.exit()
+
+
+    env = RecoveryAviary.RecoveryAviary(act=RPM, obs=KIN, gui=True)
+    agent = DRL.Agent(explore=False, batch_size=16, lr_critic=1e-3, lr_actor=1e-3)
 
     run(agent, env)
     

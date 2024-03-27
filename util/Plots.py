@@ -20,7 +20,7 @@ def plot_from_json(src, dst):
         ax1.plot(x, data['scores'], ':', label='Score', color=BLUE)
         ax1.plot(x, data['avgs'], label='Average score', color=CHARCOAL)
         ax1.tick_params(axis='y', labelcolor=CHARCOAL)
-        ax1.set_ylim([0, 500])
+        ax1.set_ylim([0, max(data['scores'])])
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('Epsilon', color=REDWOOD)
@@ -38,5 +38,5 @@ def plot_from_json(src, dst):
     print(f'done.')
 
 if __name__ == '__main__':
-    num = 142
+    num = 17
     plot_from_json(f'data/training_data_{num}.json', f'plots/{num}.png')
