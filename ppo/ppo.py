@@ -1,4 +1,4 @@
-from network import FeedForwardNN
+from network import ActorNN, CriticNN
 from torch.distributions import MultivariateNormal
 import torch
 import torch.nn as nn
@@ -7,12 +7,13 @@ import json
 import time
 
 class PPO():
-    def __init__(self, env, use_network=False):
+    def __init__(self, env, use_network=False, gui=False):
         self._init_hyperparameters()
 
         self.env = env
         self.obs_dim = 12 #env.observation_space.shape[0]
         self.act_dim = 4 #env.action_space.shape[0]
+        self.gui = gui
 
         # statistics
         self.avgs = []
@@ -21,9 +22,9 @@ class PPO():
         self.avg_score = 0
 
         # chooses action
-        self.actor = FeedForwardNN(self.obs_dim, self.act_dim)
+        self.actor = ActorNN(self.obs_dim, self.act_dim)
         # calculates reward
-        self.critic = FeedForwardNN(self.obs_dim, 1)
+        self.critic = CriticNN(self.obs_dim, 1)
 
         if use_network:
             self.actor.load_state_dict(torch.load(f'state_dict_actor'))
@@ -98,7 +99,7 @@ class PPO():
 
                 obs, rew, term, trunc, _ = self.env.step(action)
                 # SLOW TIME
-                #time.sleep(0.1)
+                if self.gui: time.sleep(0.001)
                 obs = np.reshape(obs, (-1, 12))[0]
 
                 ep_rews.append(rew)

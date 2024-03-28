@@ -12,7 +12,7 @@ class RecoveryAviary(HoverAviary):
 
         state = self._getDroneStateVector(0)
         ret = max(0, 2 - np.linalg.norm(self.TARGET_POS-state[0:3])**4)
-        return ret
+        return ret + 1
     
         state = self._getDroneStateVector(0)
         # pos (3), quat (4), rpy, (3), vel (3), ang_v (3), last_clipped_action (4)
