@@ -216,7 +216,7 @@ class PPO():
         self.gamma = 0.95
         self.n_updates_per_iteration = 5
         self.clip = 0.2
-        self.lr = 0.005
+        self.lr = 0.01
 
 if __name__ == '__main__':
     import gymnasium as gym

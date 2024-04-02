@@ -85,11 +85,12 @@ from ppo import PPO
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, save_training_data)
 
-    gui = True
+    gui = False
 
-    env = RecoveryAviary(act=ActionType.RPM, obs=ObservationType.KIN, gui=gui, ctrl_freq=480, pyb_freq=480)
-    agent = PPO(env, use_network=True, gui=gui)
-    agent.learn(100000)
+    env = RecoveryAviary(act=ActionType.RPM, obs=ObservationType.KIN, gui=gui,
+                         ctrl_freq=480, pyb_freq=480, initial_xyzs=np.array([[0,0,0]]))
+    agent = PPO(env, use_network=False, gui=gui)
+    agent.learn(1000000)
 
     agent.save_stats()
     sys.exit()

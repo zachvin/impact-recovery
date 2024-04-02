@@ -9,7 +9,8 @@ class CriticNN(nn.Module):
 
         self.layer1 = nn.Linear(in_dim, 64)
         self.layer2 = nn.Linear(64, 64)
-        self.layer3 = nn.Linear(64, out_dim)
+        self.layer3 = nn.Linear(64, 64)
+        self.layer4 = nn.Linear(64, out_dim)
 
     def forward(self, obs):
         if isinstance(obs, np.ndarray):
@@ -17,7 +18,8 @@ class CriticNN(nn.Module):
 
         x = F.relu(self.layer1(obs))
         x = F.relu(self.layer2(x))
-        x = self.layer3(x)
+        x = F.relu(self.layer3(x))
+        x = self.layer4(x)
 
         return x
     
@@ -27,7 +29,8 @@ class ActorNN(nn.Module):
 
         self.layer1 = nn.Linear(in_dim, 64)
         self.layer2 = nn.Linear(64, 64)
-        self.layer3 = nn.Linear(64, out_dim)
+        self.layer3 = nn.Linear(64, 64)
+        self.layer4 = nn.Linear(64, out_dim)
 
     def forward(self, obs):
         if isinstance(obs, np.ndarray):
@@ -35,7 +38,8 @@ class ActorNN(nn.Module):
 
         x = F.relu(self.layer1(obs))
         x = F.relu(self.layer2(x))
-        x = self.layer3(x)
+        x = F.relu(self.layer3(x))
+        x = self.layer4(x)
         x = F.tanh(x)
 
         return x

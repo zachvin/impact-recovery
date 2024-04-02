@@ -2,17 +2,50 @@ from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
 
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
+
 import numpy as np
+from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType, ImageType
 
 class RecoveryAviary(HoverAviary):
+
+    def __init__(self,
+                 drone_model: DroneModel=DroneModel.CF2X,
+                 initial_xyzs=None,
+                 initial_rpys=None,
+                 physics: Physics=Physics.PYB,
+                 pyb_freq: int = 240,
+                 ctrl_freq: int = 30,
+                 gui=False,
+                 record=False,
+                 obs: ObservationType=ObservationType.KIN,
+                 act: ActionType=ActionType.RPM
+                 ):
+        
+        self.INIT_XYZS = initial_xyzs
+        self.TARGET_POS = np.array([0,0,1])
+        self.EPISODE_LEN_SEC = 8
+        super().__init__(drone_model=drone_model,
+                         initial_xyzs=initial_xyzs,
+                         initial_rpys=initial_rpys,
+                         physics=physics,
+                         pyb_freq=pyb_freq,
+                         ctrl_freq=ctrl_freq,
+                         gui=gui,
+                         record=record,
+                         obs=obs,
+                         act=act
+                         )
+        
     def _computeReward(self):
         """
         Computes current reward value.
         """
 
         state = self._getDroneStateVector(0)
-        ret = max(0, 2 - np.linalg.norm(self.TARGET_POS-state[0:3])**4)
-        return ret + 1
+        pos_reward = np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))*2
+        rot_reward = np.abs(np.linalg.norm(state[7:10]))
+        #ret = max(0, 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))*2)
+        return max(0, 3 - pos_reward - rot_reward)
     
         state = self._getDroneStateVector(0)
         # pos (3), quat (4), rpy, (3), vel (3), ang_v (3), last_clipped_action (4)
@@ -65,7 +98,8 @@ class RecoveryAviary(HoverAviary):
         if (abs(state[0]) > 1.5 or abs(state[1]) > 1.5 or state[2] > 2.0 # Truncate when the drone is too far away
              or abs(state[7]) > .4 or abs(state[8]) > .4 # Truncate when the drone is too tilted
         ):
-            return True
+            # should return True - changed for testing
+            return False
         if self.step_counter/self.PYB_FREQ > self.EPISODE_LEN_SEC:
             return True
         else:
