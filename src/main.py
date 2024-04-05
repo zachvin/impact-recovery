@@ -7,74 +7,18 @@ import torch as T
 sys.path.insert(1, '../util/')
 sys.path.insert(1, '../env/')
 
-import DRL
 from RecoveryAviary import RecoveryAviary
 import numpy as np
 import signal
 
-RPM = ActionType('rpm')
-KIN = ObservationType('kin')
+def sig_handler(sig, frame):
+    """
+    Signal handler saves training data on interrupt.
+    """
 
-def run(agent, env):
-
-    num_games   = 1000 # number of total games to be run
-    avg_size    = 10 # number of samples used in running average
-
-    for i in range(num_games):
-        score = 0
-
-        # obs: Box() of shape (NUM_DRONES,12)
-        obs, info = env.reset()
-
-        term, trunc = False, False
-
-        while not term and not trunc:
-
-            # get action and value data for current state
-            obs = np.reshape(obs, (-1, 12))[0]
-
-            action = agent.choose_action(T.FloatTensor(obs))
-
-            obs_, reward, term, trunc, info = env.step(np.reshape(action, (1, 4)))
-            obs_ = np.reshape(obs_, (-1, 12))[0]
-
-            # add memory
-            agent.memory.append(obs, obs_, reward, term, clip=True)
-
-            # learn
-            agent.learn()
-
-            # update observation
-            obs = obs_
-            score += reward
-
-            if term or trunc:
-                break
-
-        print(f"Episode: {i + 1}\tReward: {score:.2f}\tEps: {agent.epsilon:.3f}")
-
-        agent.scores.append(score)
-        agent.avg_score = np.mean(agent.scores[-avg_size:])
-        agent.avgs.append(agent.avg_score)
-        agent.epsilons.append(agent.epsilon)
-
-        # save network weights after improving
-        '''
-        if agent.avg_score > agent.max_score:
-            agent.save_models()
-            agent.max_score = agent.avg_score
-            '''
-
-    agent.save_stats()
-
-
-def save_training_data(sig, frame):
-
-    global agent
-
-    #print(f'velo: ({agent.memory.minv}, {agent.memory.maxv}) avel: ({agent.memory.mina}, {agent.memory.maxa})')
     print('\n\nClosing training...')
 
+    global agent
     agent.save_stats()
 
     print('\n')
@@ -82,22 +26,30 @@ def save_training_data(sig, frame):
 
 sys.path.insert(1, '../ppo/')
 from ppo import PPO
+
 if __name__ == '__main__':
-    signal.signal(signal.SIGINT, save_training_data)
+    # SIMULATION CONTROL
+    ctrl_freq = 480
+    pyb_freq = 480
+    initial_xyzs = np.expand_dims(np.random.rand(3), 0)
+    eval = True
+    use_checkpoint = True
 
-    gui = False
+    # HYPERPARAMETERS
+    entropy_coefficient = 0.005 # make higher if converging on local min
 
-    env = RecoveryAviary(act=ActionType.RPM, obs=ObservationType.KIN, gui=gui,
-                         ctrl_freq=480, pyb_freq=480, initial_xyzs=np.array([[0,0,0]]))
-    agent = PPO(env, use_network=False, gui=gui)
+    # OTHER
+    act = ActionType.RPM
+    obs = ObservationType.KIN
+
+    signal.signal(signal.SIGINT, sig_handler)
+
+    # SETUP
+    env = RecoveryAviary(act=act, obs=obs, gui=eval, ctrl_freq=ctrl_freq,
+                         pyb_freq=pyb_freq, initial_xyzs=initial_xyzs)
+    
+    agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint, entropy_coefficient=0.005)
     agent.learn(1000000)
 
     agent.save_stats()
     sys.exit()
-
-
-    env = RecoveryAviary.RecoveryAviary(act=RPM, obs=KIN, gui=True)
-    agent = DRL.Agent(explore=False, batch_size=16, lr_critic=1e-3, lr_actor=1e-3)
-
-    run(agent, env)
-    
