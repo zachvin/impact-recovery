@@ -10,8 +10,7 @@ class PPO():
     def __init__(self, env, eval=False, use_checkpoint=False,
                  entropy_coefficient=0.005):
         # HYPERPARAMETERS
-        self.timesteps_per_batch = 4800
-        self.max_timesteps_per_episode = 1600
+        self.epochs_per_batch = 2
         self.gamma = 0.95
         self.n_updates_per_iteration = 5
         self.clip = 0.2
@@ -30,9 +29,14 @@ class PPO():
         self.scores = []
         self.epsilons = []
         self.avg_score = 0
+        self.ep_num = 0
 
         # OTHER
-        self.cov_var = torch.full(size=(self.act_dim,), fill_value=0.5)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu"
+        print(f'Using device {self.device}')
+
+        self.cov_var = torch.full(size=(self.act_dim,), fill_value=0.5, device=self.device)
         self.cov_mat = torch.diag(self.cov_var)
 
         # ACTOR
@@ -62,14 +66,17 @@ class PPO():
             self.actor.load_state_dict(torch.load(f'state_dict_actor'))
             self.critic.load_state_dict(torch.load(f'state_dict_critic'))
 
+        self.actor.to(self.device)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
+
+        self.critic.to(self.device)
         self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
 
-    def learn(self, target_timesteps):
+    def learn(self, target_episodes):
         total_timesteps = 0
         losses = []
 
-        while total_timesteps < target_timesteps:
+        while self.ep_num < target_episodes:
             # Get training data
             batch_obs, batch_acts, batch_log_probs, batch_rtgs, timesteps_taken \
                   = self.rollout()
@@ -86,7 +93,6 @@ class PPO():
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
             # Update network weights
-            print(f'Starting next {self.n_updates_per_iteration} updates...')
             for _ in range(self.n_updates_per_iteration):
 
                 # Calculate value of actions and log probabilities
@@ -103,7 +109,7 @@ class PPO():
                 
                 critic_loss = nn.MSELoss()(V, batch_rtgs)
 
-                losses.append(actor_loss.detach().numpy())
+                losses.append(actor_loss.cpu().detach().numpy())
 
                 self.actor_optim.zero_grad()
                 actor_loss.backward(retain_graph=True)
@@ -113,8 +119,7 @@ class PPO():
                 critic_loss.backward()
                 self.critic_optim.step()
 
-                print(f'\tA: {actor_loss}\tC: {critic_loss}')
-            print('done.')
+                #print(f'\tA: {actor_loss}\tC: {critic_loss}')
 
     def rollout(self):
         batch_obs = []
@@ -125,7 +130,7 @@ class PPO():
         batch_sums = []
 
         n_timesteps = 0
-        while n_timesteps < self.timesteps_per_batch:
+        for _ in range(self.epochs_per_batch):
             ep_rewards = []
 
             self.env.INIT_XYZS = np.expand_dims(np.random.rand(3), 0)
@@ -157,14 +162,14 @@ class PPO():
             self.epsilons.append(0)
 
             batch_rewards.append(ep_rewards)
+            print(f'Episode {self.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.scores[-10:]):.2f}')
+            self.ep_num += 1
 
-        batch_obs = torch.tensor(batch_obs, dtype=torch.float)
-        batch_acts = torch.tensor(batch_acts, dtype=torch.float)
-        batch_log_probs = torch.tensor(batch_log_probs, dtype=torch.float)
+        batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
+        batch_acts = torch.tensor(np.array(batch_acts), dtype=torch.float, device=self.device)
+        batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
 
         batch_rtgs = self.compute_rtgs(batch_rewards)
-
-        print(f'Batch average reward: {np.mean(np.array(batch_sums)):.2f}')
 
         return batch_obs, batch_acts, batch_log_probs, batch_rtgs, n_timesteps
 
@@ -179,7 +184,7 @@ class PPO():
                 discounted_reward = rew + discounted_reward * self.gamma
                 batch_rtgs.insert(0, discounted_reward)
 
-        batch_rtgs = torch.tensor(batch_rtgs, dtype=torch.float)
+        batch_rtgs = torch.tensor(batch_rtgs, dtype=torch.float, device=self.device)
 
         return batch_rtgs
     
@@ -187,7 +192,7 @@ class PPO():
         V = self.critic(batch_obs).squeeze()
 
         if isinstance(batch_obs, np.ndarray):
-            batch_obs = torch.tensor(batch_obs, dtype=torch.float)
+            batch_obs = torch.tensor(batch_obs, dtype=torch.float, device=self.device)
 
         mean = self.actor(batch_obs)
         dist = MultivariateNormal(mean, self.cov_mat)
@@ -197,7 +202,7 @@ class PPO():
 
     def get_action(self, obs):
         if isinstance(obs, np.ndarray):
-            obs = torch.tensor(obs, dtype=torch.float)
+            obs = torch.tensor(obs, dtype=torch.float, device=self.device)
 
         mean = self.actor(obs)
 
@@ -206,7 +211,7 @@ class PPO():
         action = dist.sample() # sample action from distribution
         log_prob = dist.log_prob(action) # using log_prob for network
 
-        return action.detach().numpy(), log_prob.detach()
+        return action.cpu().detach().numpy(), log_prob.cpu().detach()
     
     def save_stats(self):
         """
