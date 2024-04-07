@@ -29,14 +29,15 @@ from ppo import PPO
 
 if __name__ == '__main__':
     # SIMULATION CONTROL
-    ctrl_freq = 480
-    pyb_freq = 480
+    ctrl_freq = 240
+    pyb_freq = 240
     initial_xyzs = np.expand_dims(np.random.rand(3), 0)
-    eval = True
-    use_checkpoint = True
+    initial_xyzs = np.array([[0,0,0]])
+    eval = False
+    use_checkpoint = False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.005 # make higher if converging on local min
+    entropy_coefficient = 0.01 # make higher if converging on local min
 
     # OTHER
     act = ActionType.RPM
@@ -48,8 +49,9 @@ if __name__ == '__main__':
     env = RecoveryAviary(act=act, obs=obs, gui=eval, ctrl_freq=ctrl_freq,
                          pyb_freq=pyb_freq, initial_xyzs=initial_xyzs)
     
-    agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint, entropy_coefficient=0.005)
-    agent.learn(1000000)
+    agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
+                entropy_coefficient=entropy_coefficient)
+    agent.learn(10000)
 
     agent.save_stats()
     sys.exit()

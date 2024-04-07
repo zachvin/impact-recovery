@@ -22,11 +22,13 @@ def plot_from_json(src, dst):
         ax1.tick_params(axis='y', labelcolor=CHARCOAL)
         ax1.set_ylim([0, max(data['scores'])])
 
+        '''
         ax2 = ax1.twinx()
         ax2.set_ylabel('Epsilon', color=REDWOOD)
         ax2.plot(x, data['epsilons'], label='Epsilon', color=REDWOOD)
         ax2.tick_params(axis='y', labelcolor=REDWOOD)
         ax2.set_ylim([0,1])
+        '''
 
         title = src.split('/')[-1].split('.')[0]
         fig.suptitle(f'Model learning curve ({title})')
@@ -38,5 +40,5 @@ def plot_from_json(src, dst):
     print(f'done.')
 
 if __name__ == '__main__':
-    num = 301
+    num = 3
     plot_from_json(f'data/training_data_{num}.json', f'plots/{num}.png')

@@ -6,6 +6,13 @@ import numpy as np
 import json
 import time
 
+class Stats():
+    def __init__(self):
+        self.current_average = -np.inf
+        self.average_scores = []
+        self.timesteps = []
+        self.episode_nums = []
+
 class PPO():
     def __init__(self, env, eval=False, use_checkpoint=False,
                  entropy_coefficient=0.005):
@@ -62,7 +69,7 @@ class PPO():
             nn.Linear(64, 1),
         )
 
-        if self.eval or self.use_checkpoint:
+        if self.use_checkpoint:
             self.actor.load_state_dict(torch.load(f'state_dict_actor'))
             self.critic.load_state_dict(torch.load(f'state_dict_critic'))
 
@@ -133,7 +140,8 @@ class PPO():
         for _ in range(self.epochs_per_batch):
             ep_rewards = []
 
-            self.env.INIT_XYZS = np.expand_dims(np.random.rand(3), 0)
+            #self.env.INIT_XYZS = np.expand_dims(np.random.rand(3), 0)
+
             obs, info = self.env.reset()
             obs = np.reshape(obs, (-1, 12))[0]
 
@@ -157,7 +165,7 @@ class PPO():
 
             self.scores.append(sum(ep_rewards))
             batch_sums.append(sum(ep_rewards))
-            self.avg_score = np.mean(self.scores[-10:])
+            self.avg_score = np.mean(self.scores[-100:])
             self.avgs.append(self.avg_score)
             self.epsilons.append(0)
 
