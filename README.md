@@ -80,3 +80,46 @@ All of the data are represented as float values. The samples come from a virtual
 ![image](https://github.com/zachvin/impact-recovery/assets/43306216/9a8e792e-3dfa-4dfa-b5fb-ff06067f4bd1)
 
 At ~4000, the drone takes off vertically 10 meters. The data becomes significantly noisier, and at ~6500, the drone rotates about the Z axis, causing a shift in the acceleration values.
+
+
+# Part 3
+
+## Justification of architecture
+
+  > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for part 3. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
+
+### Layers
+
+The network architecture was selected based on [this video](https://www.youtube.com/watch?v=T0A9voXzhng), which performed well in solving the same problem. However, the associated paper ([arXiv:1707.05110](https://arxiv.org/abs/1707.05110)) writes that no optimization of the network architecture was done.
+
+  - Actor network: 2 hidden layers with 64 nodes and Tanh activation function
+  - Critic network: 2 hidden layers with 64 nodes and Tanh activation function
+  
+### Loss function
+
+The Actor loss has two components: surrogate and entropy losses.
+  
+1. The surrogate loss `surr1` calculates the difference between the parameters in the network at timestep `k` and timestep `k+1`. It is multiplied by the advantage function so actions that provide a higher-than-expected score are rewarded. `surr2` is the clipped version of `surr1`. Since the advantage should be maximized, the loss is multiplied by -1 so that the optimizer produces policy gradients in the correct direction.
+
+2. Entropy loss is noise from the probability distribution that the actor network creates. It is added to the surrogate loss in order to increase exploration given the very large observation space.
+
+The Critic uses MSE loss between the critic's output `V` and a batch of the sum of future expected rewards (rewards-to-go). The Critic is optimized to best predict the value of a given state.
+
+- Optimization
+
+## Obstacles and performance
+
+The network does not perform well for this problem. Despite solving test environments such as OpenAI's swinging pendulum, the PPO algorithm gets caught in local minima and actually minimizes the epoch-by-epoch reward as it trains. The average episode reward is noisy and does not improve consistently. As a result, I took the following steps in order to diagnose the problem:
+
+1. **Environment sanity check**: The environment used for this project contained some oddities (i.e. observation space changes based on action type, simulator output is returned in a batch of observations instead of a single observation, poor documentation), so it is possible that the issue was with the environment. However, manual testing shows that the simulation IO appears consistent between timesteps and between epochs. As a result, if there is an issue with the environment, I would assume it is due to an inefficient reward function.
+2. **Episode truncation**: In the environment, truncation is not punished by default. As a result, the network appeared to cause episode truncation immediately to avoid negative rewards later in the simulation. An episode is truncated when the drone tilts too far or moves too far from the target location. After removing truncation (and running each simulation for a finite number of timesteps), the agent no longer converged on extremely low rewards after a few frames, but still did not produce adequate performance. However, the agent still started each episode with a sharp tilt of the quadcopter.
+3. **Exploration failure**: To try to combat local minima, entropy loss was introduced to enforce greater exploration. It is difficult to assess its impact on the performance because the PPO agent still appears to converge with low-scoring policies. Entropy coefficients such as `0.001`, `0.05`, and `0.1` were tested.
+4. **Start parameter randomization**: The drone's starting location was randomized to increase network generalization in the event that the poor performance was due to memorization. However, the network still doesn't improve its average reward. In many of the tests, the drone would fall from its starting location and shoot upward in an arbitrary direction upon hitting the ground. To reduce training time for debugging purposes, the start location was made static again.
+5. **Reward shaping**: PPO agents require dense rewards. The original reward function provided by the environment calculated the reward as the linear distance from the target location of `(0,0,1)`. Though this is not a sparse reward function, different functions were also tested that rewarded minimizing tilt and angular velocity. Additionally, if the drone touched the ground (when `z < 0.015`), an additional point punishment was given. Despite several iterations and combinations of these rewards, the network still did not improve.
+
+## Improvements
+
+1. **Structure review**: The first step to improving the network's performance is a review of its structure with Prof. Czajka. Given my inexperience with neural networks and the wide array of tunable hyperparameters, it is difficult to debug.
+2. **Minibatches**: Due to the large amount of training data produced by a single iteration, it is only possible to learn from a total of four epochs in a single batch with my current hardware. With minibatches, it will be possible to assemble a greater amount of data before backpropagation, and will also allow for the reduction of memorization through memory randomization.
+3. **Learning rate annealing**: It is possible that the poor performance is the result of a static learning rate. My assumption is that, if a static learning rate is the issue, that would be made apparent later in training when the network is making small optimizations to its performance, whereas it currently shows no success at all.
+4. **Longer testing**: It is also possible that the network is improving, but only slowly, which would in fact point to a learning rate issue as mentioned previously. With a much longer training time (several hours, as opposed to ~10mins), the graphs produced from that training may help point to a specific issue.
