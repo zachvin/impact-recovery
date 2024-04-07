@@ -105,8 +105,6 @@ The Actor loss has two components: surrogate and entropy losses.
 
 The Critic uses MSE loss between the critic's output `V` and a batch of the sum of future expected rewards (rewards-to-go). The Critic is optimized to best predict the value of a given state.
 
-- Optimization
-
 ## Obstacles and performance
 
 The network does not perform well for this problem. Despite solving test environments such as OpenAI's swinging pendulum, the PPO algorithm gets caught in local minima and actually minimizes the epoch-by-epoch reward as it trains. The average episode reward is noisy and does not improve consistently. As a result, I took the following steps in order to diagnose the problem:
