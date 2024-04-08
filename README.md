@@ -98,7 +98,7 @@ The simulator will run for 1,000 epochs or until it receives an interrupt. Upon 
 
 ### Layers
 
-The network architecture was selected based on [this video](https://www.youtube.com/watch?v=T0A9voXzhng), which performed well in solving the same problem. However, the associated paper ([arXiv:1707.05110](https://arxiv.org/abs/1707.05110)) writes that no optimization of the network architecture was done.
+The network architecture was selected based on [this video](https://www.youtube.com/watch?v=T0A9voXzhng), which performed well in solving the same problem. However, the associated paper ([arXiv:1707.05110](https://arxiv.org/abs/1707.05110) Hwangbo, et al. 2017) writes that no optimization of the network architecture was done.
 
   - Actor network: 2 hidden layers with 64 nodes and Tanh activation function
   - Critic network: 2 hidden layers with 64 nodes and Tanh activation function
