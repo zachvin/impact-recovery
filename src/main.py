@@ -33,8 +33,8 @@ if __name__ == '__main__':
     pyb_freq = 240
     initial_xyzs = np.expand_dims(np.random.rand(3), 0)
     initial_xyzs = np.array([[0,0,0]])
-    eval = False
-    use_checkpoint = False
+    eval = True
+    use_checkpoint = True
 
     # HYPERPARAMETERS
     entropy_coefficient = 0.01 # make higher if converging on local min
