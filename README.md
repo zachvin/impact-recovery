@@ -84,6 +84,14 @@ At ~4000, the drone takes off vertically 10 meters. The data becomes significant
 
 # Part 3
 
+## Setup
+To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). To run, 
+
+      cd src/
+      python3 main.py
+
+The simulator will run for 1,000 epochs or until it receives an interrupt. Upon interrupt, the code will prompt whether to save training data (to be graphed later) and whether to save the trained network. `eval` and `use_checkpoint` in `src/main.py` control whether to show the GUI and use the pre-trained networks, respectively. They will both be set to `True` by default. To plot the training data, change the value for the `num` variable in `util/Plots.py` to the integer shown when the training data is saved.
+
 ## Justification of architecture
 
   > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for part 3. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
@@ -107,20 +115,25 @@ The Critic uses MSE loss between the critic's output `V` and a batch of the sum 
 
 ## Obstacles and performance
 
-The network does not perform well for this problem. Despite solving test environments such as OpenAI's swinging pendulum, the PPO algorithm gets caught in local minima and actually minimizes the epoch-by-epoch reward as it trains. The average episode reward is noisy and does not improve consistently. As a result, I took the following steps in order to diagnose the problem:
+![model](https://github.com/zachvin/impact-recovery/assets/43306216/c05d15cb-1391-489a-931e-4a83fff807c4)
+
+Above is an example of the model training for over 1,000 games and improving slightly before catastrophic forgetting.
+
+The network does not perform well for this problem. Despite solving test environments such as OpenAI's swinging pendulum, the PPO algorithm provides noisy average episode reward and does not improve consistently. As a result, I took the following steps in order to diagnose the problem, but have ultimately been unsuccessful:
 
 1. **Environment sanity check**: The environment used for this project contained some oddities (i.e. observation space changes based on action type, simulator output is returned in a batch of observations instead of a single observation, poor documentation), so it is possible that the issue was with the environment. However, manual testing shows that the simulation IO appears consistent between timesteps and between epochs. As a result, if there is an issue with the environment, I would assume it is due to an inefficient reward function.
 2. **Episode truncation**: In the environment, truncation is not punished by default. As a result, the network appeared to cause episode truncation immediately to avoid negative rewards later in the simulation. An episode is truncated when the drone tilts too far or moves too far from the target location. After removing truncation (and running each simulation for a finite number of timesteps), the agent no longer converged on extremely low rewards after a few frames, but still did not produce adequate performance. However, the agent still started each episode with a sharp tilt of the quadcopter.
 3. **Exploration failure**: To try to combat local minima, entropy loss was introduced to enforce greater exploration. It is difficult to assess its impact on the performance because the PPO agent still appears to converge with low-scoring policies. Entropy coefficients such as `0.001`, `0.05`, and `0.1` were tested.
 4. **Start parameter randomization**: The drone's starting location was randomized to increase network generalization in the event that the poor performance was due to memorization. However, the network still doesn't improve its average reward. In many of the tests, the drone would fall from its starting location and shoot upward in an arbitrary direction upon hitting the ground. To reduce training time for debugging purposes, the start location was made static again.
-5. **Reward shaping**: PPO agents require dense rewards. The original reward function provided by the environment calculated the reward as the linear distance from the target location of `(0,0,1)`. Though this is not a sparse reward function, different functions were also tested that rewarded minimizing tilt and angular velocity. Additionally, if the drone touched the ground (when `z < 0.015`), an additional point punishment was given. Despite several iterations and combinations of these rewards, the network still did not improve.
+5. **Reward shaping and standardization**: PPO agents require dense rewards. The original reward function provided by the environment calculated the reward as the linear distance from the target location of `(0,0,1)`. Though this is not a sparse reward function, different functions were also tested that rewarded minimizing tilt and angular velocity. Additionally, if the drone touched the ground (when `z < 0.015`), an additional point punishment was given. Prior to backpropagation, the reward is normalized according to the batch average and standard deviation. Despite several iterations and combinations of these rewards, the network still did not make significant improvements.
+6. **Epsilon-greedy**: In a further attempt to encourage exploration, I implemented an epsilon-greedy policy for a short time. It did not show improvements and research suggests that it is not the optimal way to promote exploration so it was removed.
 
 ## Improvements
 
 1. **Structure review**: The first step to improving the network's performance is a review of its structure with Prof. Czajka. Given my inexperience with neural networks and the wide array of tunable hyperparameters, it is difficult to debug.
-2. **Minibatches**: Due to the large amount of training data produced by a single iteration, it is only possible to learn from a total of four epochs in a single batch with my current hardware. With minibatches, it will be possible to assemble a greater amount of data before backpropagation, and will also allow for the reduction of memorization through memory randomization.
-3. **Learning rate annealing**: It is possible that the poor performance is the result of a static learning rate. My assumption is that, if a static learning rate is the issue, that would be made apparent later in training when the network is making small optimizations to its performance, whereas it currently shows no success at all.
-4. **Longer testing**: It is also possible that the network is improving, but only slowly, which would in fact point to a learning rate issue as mentioned previously. With a much longer training time (several hours, as opposed to ~10mins), the graphs produced from that training may help point to a specific issue.
+2. **Minibatches**: Due to the large amount of training data produced by a single iteration, it is only possible to learn from a total of four epochs in a single batch with my current hardware. With minibatches, it will be possible to assemble a greater amount of data before backpropagation, and may also allow for the reduction of memorization through memory randomization.
+3. **Learning rate annealing**: It is possible that the poor performance is the result of a static learning rate. My assumption is that, if a static learning rate is the issue, that would be made apparent later in training when the network is making small optimizations to its performance, whereas it currently shows no success at all. As a result, I'm skeptical of that the learning rate is the root problem.
+4. **Longer testing**: It is also possible that the network is improving, but only slowly, which would in fact point to a learning rate issue as mentioned previously. With a much longer training time (several hours, as opposed to ~30mins), the graphs produced from that training may help point to a specific issue.
 
 ## Acknowledgements
 The code in `ppo.py` is adapted from [this implementation](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8) by Eric Yang Yu.
