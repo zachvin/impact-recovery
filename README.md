@@ -88,7 +88,7 @@ At ~4000, the drone takes off vertically 10 meters. The data becomes significant
 
   > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for part 3. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
 
-To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). With the virtual environment enabled (I used virtualenv instead of conda): 
+Setup takes about 5-10 minutes, most of which is spent downloading the simulator. To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). With the virtual environment enabled (I used virtualenv instead of conda): 
 
       git clone git@github.com:zachvin/impact-recovery.git
       cd impact-recovery/src/
