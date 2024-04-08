@@ -85,16 +85,18 @@ At ~4000, the drone takes off vertically 10 meters. The data becomes significant
 # Part 3
 
 ## Setup
-To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). To run, 
-
-      cd src/
-      python3 main.py
-
-The simulator will run for 1,000 epochs or until it receives an interrupt. Upon interrupt, the code will prompt whether to save training data (to be graphed later) and whether to save the trained network. `eval` and `use_checkpoint` in `src/main.py` control whether to show the GUI and use the pre-trained networks, respectively. They will both be set to `True` by default. To plot the training data, change the value for the `num` variable in `util/Plots.py` to the integer shown when the training data is saved.
-
-## Justification of architecture
 
   > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for part 3. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
+
+To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). With the virtual environment enabled (I used virtualenv instead of conda): 
+
+      git clone git@github.com:zachvin/impact-recovery.git
+      cd impact-recovery/src/
+      python3 main.py
+
+The simulator will run for 1,000 episodes or until it receives an interrupt. Upon interrupt, the code will prompt whether to save training data (to be graphed later) and whether to save the trained network. `eval` and `use_checkpoint` in `src/main.py` control whether to show the GUI and use the pre-trained networks, respectively. They will both be set to `True` by default. To plot the training data, change the value for the `num` variable in `util/Plots.py` to the integer shown when the training data is saved.
+
+## Justification of architecture
 
 ### Layers
 
