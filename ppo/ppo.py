@@ -15,13 +15,13 @@ class Stats():
 
 class PPO():
     def __init__(self, env, eval=False, use_checkpoint=False,
-                 entropy_coefficient=0.005):
+                 entropy_coefficient=0.005, lr=0.01):
         # HYPERPARAMETERS
-        self.epochs_per_batch = 2
+        self.epochs_per_batch = 4
         self.gamma = 0.95
         self.n_updates_per_iteration = 5
         self.clip = 0.2
-        self.lr = 0.01
+        self.lr = lr
         self.entropy_coefficient = entropy_coefficient
         self.use_checkpoint = use_checkpoint
 
@@ -49,23 +49,23 @@ class PPO():
         # ACTOR
         self.actor = nn.Sequential(
             nn.Linear(self.obs_dim, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, self.act_dim),
-            nn.Tanh()
+            nn.Tanh(),
         )
 
         # CRITIC
         self.critic = nn.Sequential(
             nn.Linear(self.obs_dim, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, 64),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(64, 1),
         )
 
@@ -176,6 +176,10 @@ class PPO():
         batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
         batch_acts = torch.tensor(np.array(batch_acts), dtype=torch.float, device=self.device)
         batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
+
+        # reward normalization
+        batch_rewards = np.array(batch_rewards)
+        batch_rewards = (batch_rewards - batch_rewards.mean()) / (batch_rewards.std() + 1e-10)
 
         batch_rtgs = self.compute_rtgs(batch_rewards)
 

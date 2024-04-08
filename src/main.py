@@ -38,6 +38,7 @@ if __name__ == '__main__':
 
     # HYPERPARAMETERS
     entropy_coefficient = 0.01 # make higher if converging on local min
+    lr = 0.01
 
     # OTHER
     act = ActionType.RPM
@@ -50,7 +51,7 @@ if __name__ == '__main__':
                          pyb_freq=pyb_freq, initial_xyzs=initial_xyzs)
     
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
-                entropy_coefficient=entropy_coefficient)
+                entropy_coefficient=entropy_coefficient, lr=lr)
     agent.learn(10000)
 
     agent.save_stats()
