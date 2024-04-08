@@ -121,3 +121,8 @@ The network does not perform well for this problem. Despite solving test environ
 2. **Minibatches**: Due to the large amount of training data produced by a single iteration, it is only possible to learn from a total of four epochs in a single batch with my current hardware. With minibatches, it will be possible to assemble a greater amount of data before backpropagation, and will also allow for the reduction of memorization through memory randomization.
 3. **Learning rate annealing**: It is possible that the poor performance is the result of a static learning rate. My assumption is that, if a static learning rate is the issue, that would be made apparent later in training when the network is making small optimizations to its performance, whereas it currently shows no success at all.
 4. **Longer testing**: It is also possible that the network is improving, but only slowly, which would in fact point to a learning rate issue as mentioned previously. With a much longer training time (several hours, as opposed to ~10mins), the graphs produced from that training may help point to a specific issue.
+
+## Acknowledgements
+The code in `ppo.py` is adapted from [this implementation](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8) by Eric Yang Yu.
+
+The code is an implementation of (Proximal Policy Optimization Algorithms)[https://arxiv.org/abs/1707.06347] by Schulman, et al. 2017.
