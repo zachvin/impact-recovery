@@ -140,4 +140,4 @@ The network does not perform well for this problem. Despite solving test environ
 ## Acknowledgements
 The code in `ppo.py` is adapted from [this implementation](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8) by Eric Yang Yu.
 
-The code is an implementation of (Proximal Policy Optimization Algorithms)[https://arxiv.org/abs/1707.06347] by Schulman, et al. 2017.
+The code is an implementation of [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) by Schulman, et al. 2017.
