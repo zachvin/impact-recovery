@@ -10,6 +10,21 @@ sys.path.insert(1, '../env/')
 from RecoveryAviary import RecoveryAviary
 import numpy as np
 import signal
+import argparse
+
+parser = argparse.ArgumentParser(
+    prog='main.py',
+    description='Runs PPO agent in quadcopter environment'
+)
+
+parser.add_argument('--num_epochs', '-n', help='number of epochs to run',
+                    type=int)
+parser.add_argument('--eval', '-e', help='whether to evaluate network',
+                    action='store_true')
+parser.add_argument('--checkpoints', '-c', help='whether to use trained networks',
+                    action='store_true')
+
+args = parser.parse_args()
 
 def sig_handler(sig, frame):
     """
@@ -33,8 +48,8 @@ if __name__ == '__main__':
     pyb_freq = 240
     initial_xyzs = np.expand_dims(np.random.rand(3), 0)
     initial_xyzs = np.array([[0,0,0]])
-    eval = True
-    use_checkpoint = True
+    eval = args.eval if args.eval else False
+    use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
     entropy_coefficient = 0.01 # make higher if converging on local min
@@ -52,7 +67,10 @@ if __name__ == '__main__':
     
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
                 entropy_coefficient=entropy_coefficient, lr=lr)
-    agent.learn(10000)
+    
+    num_epochs = args.num_epochs if args.num_epochs else 100
+    print(f'Starting {num_epochs}')
+    agent.learn(num_epochs)
 
     agent.save_stats()
     sys.exit()
