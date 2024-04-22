@@ -5,6 +5,7 @@ import torch.nn as nn
 import numpy as np
 import json
 import time
+from tqdm import tqdm
 
 class Stats():
     def __init__(self):
@@ -21,6 +22,7 @@ class PPO():
         self.gamma = 0.95
         self.n_updates_per_iteration = 5
         self.clip = 0.2
+        self.action_clip = 0.2
         self.lr = lr
         self.entropy_coefficient = entropy_coefficient
         self.use_checkpoint = use_checkpoint
@@ -83,7 +85,7 @@ class PPO():
         total_timesteps = 0
         losses = []
 
-        while self.ep_num < target_episodes:
+        for batch_num in tqdm(range(target_episodes//self.epochs_per_batch)):
             # Get training data
             batch_obs, batch_acts, batch_log_probs, batch_rtgs, timesteps_taken \
                   = self.rollout()
@@ -126,7 +128,9 @@ class PPO():
                 critic_loss.backward()
                 self.critic_optim.step()
 
-                #print(f'\tA: {actor_loss}\tC: {critic_loss}')
+            # decrease learning rate
+            factor = 1-(batch_num / (target_episodes//self.epochs_per_batch))
+            self.lr = self.lr * factor
 
     def rollout(self):
         batch_obs = []
@@ -170,7 +174,7 @@ class PPO():
             self.epsilons.append(0)
 
             batch_rewards.append(ep_rewards)
-            print(f'Episode {self.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.scores[-10:]):.2f}')
+            tqdm.write(f'Episode {self.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.scores[-10:]):.2f}\tlr: {self.lr}')
             self.ep_num += 1
 
         batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
@@ -223,7 +227,7 @@ class PPO():
         action = dist.sample() # sample action from distribution
         log_prob = dist.log_prob(action) # using log_prob for network
 
-        return action.cpu().detach().numpy(), log_prob.cpu().detach()
+        return action.cpu().detach().numpy() * self.action_clip, log_prob.cpu().detach()
     
     def save_stats(self):
         """

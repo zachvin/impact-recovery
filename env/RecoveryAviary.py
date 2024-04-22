@@ -44,22 +44,20 @@ class RecoveryAviary(HoverAviary):
         state = self._getDroneStateVector(0)
 
         # reward for approaching target position
-        position_punishment = np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))
+        pos_reward = 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))
         if state[2] <= 0.015:
-            position_punishment += 1
+            pos_reward -= 1
+        pos_reward = max(pos_reward, 0)
 
-        # reward for minimizing rpy
-        orientation_punishment = 0.1 * np.abs(np.linalg.norm(state[7:10]))
+        # reward for minimizing roll, pitch, and yaw
+        ori_reward = max(2 - np.abs(np.linalg.norm(state[7:10])), 0)
 
         # reward for minimizing angular velocity
-        rotation_punishment = 0.05 * np.abs(np.linalg.norm(state[13:16]))
+        rot_reward = max(2 - np.abs(np.linalg.norm(state[13:16])), 0)
 
-        ret = 2 - position_punishment - orientation_punishment - rotation_punishment
-        #print(f'pos {position_punishment:.3f}, orn {orientation_punishment:.3f},\
-              #rot {rotation_punishment:.3f}, ret {ret:.3f}')
+        ret = 0.33*pos_reward + 0.33*ori_reward + 0.33*rot_reward
         
-        #ret = max(0, 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))*2)
-        return max(0, 2 - position_punishment)
+        return pos_reward
     
         #pos (3), quat (4), rpy, (3), vel (3), ang_v (3), last_clipped_action (4)
         #pos     = state[0:3]

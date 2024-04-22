@@ -52,8 +52,8 @@ if __name__ == '__main__':
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.01 # make higher if converging on local min
-    lr = 0.01
+    entropy_coefficient = 0.1 # make higher if converging on local min
+    lr = 0.2
 
     # OTHER
     act = ActionType.RPM
