@@ -215,6 +215,26 @@ class PPO():
         log_probs = dist.log_prob(batch_acts)
 
         return V, log_probs, dist.entropy()
+    
+    def calculate_gae(self, rewards, values, dones):
+        batch_advantages = []
+        for ep_rews, ep_vals, ep_dones in zip(rewards, values, dones):
+            advantages = []
+            last_advantage = 0
+
+            for t in reversed(range(len(ep_rews))):
+                if t + 1 < len(ep_rews):
+                    delta = ep_rews[t] + self.gamma * ep_vals[t+1] * (1 - ep_dones[t+1]) - ep_vals[t]
+                else:
+                    delta = ep_rews[t] - ep_vals[t]
+
+                advantage = delta + self.gamma * self.lam * (1 - ep_dones[t]) * last_advantage
+                last_advantage = advantage
+                advantages.insert(0, advantage)
+
+            batch_advantages.extend(advantages)
+
+        return torch.tensor(batch_advantages, dtype=torch.float)
 
     def get_action(self, obs):
         if isinstance(obs, np.ndarray):
