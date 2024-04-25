@@ -40,5 +40,5 @@ def plot_from_json(src, dst):
     print(f'done.')
 
 if __name__ == '__main__':
-    num = 334
+    num = 51
     plot_from_json(f'data/training_data_{num}.json', f'plots/{num}.png')

@@ -1,17 +1,20 @@
+# Zach Vincent
+# main.py
+# Controls PPO training
+
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
-import sys
-import torch as T
-
-sys.path.insert(1, '../util/')
-sys.path.insert(1, '../env/')
 
 from RecoveryAviary import RecoveryAviary
+from ppo import PPO
+
 import numpy as np
+import sys
 import signal
 import argparse
 
+# argument parsing
 parser = argparse.ArgumentParser(
     prog='main.py',
     description='Runs PPO agent in quadcopter environment'
@@ -23,24 +26,45 @@ parser.add_argument('--eval', '-e', help='whether to evaluate network',
                     action='store_true')
 parser.add_argument('--checkpoints', '-c', help='whether to use trained networks',
                     action='store_true')
+parser.add_argument('--plot', '-p', help='whether to save and plot output',
+                    action='store_true')
 
 args = parser.parse_args()
 
-def sig_handler(sig, frame):
+def end_training(sig, frame):
     """
     Signal handler saves training data on interrupt.
     """
 
     print('\n\nClosing training...')
 
+    # ask to save/plot training data
+    plot = True
+    if args.plot != True:
+        resp = input('Save training data? [y/N]: ')
+        if 'y' not in resp.lower():
+            print('Not saving data.')
+            plot = False
+
+    # ask to save trained networks
+    networks = True
+    resp = input('Save networks? [y/N]: ')
+    if 'y' not in resp.lower():
+        print('Not saving networks.')
+        networks = False
+
     global agent
-    agent.save_stats()
+    agent.save_stats(plot, networks)
+
+    print('Agent hyperparameters:')
+    print(f'\tgamma {agent.gamma}')
+    print(f'\tlambda {agent.lam}')
+    print(f'\tentropy coeff {agent.entropy_coefficient}')
+
 
     print('\n')
     sys.exit()
 
-sys.path.insert(1, '../ppo/')
-from ppo import PPO
 
 if __name__ == '__main__':
     # SIMULATION CONTROL
@@ -52,14 +76,14 @@ if __name__ == '__main__':
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.1 # make higher if converging on local min
-    lr = 0.2
+    entropy_coefficient = 0.5 # make higher if converging on local min
+    lr = 0.1
 
     # OTHER
     act = ActionType.RPM
     obs = ObservationType.KIN
 
-    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGINT, end_training)
 
     # SETUP
     env = RecoveryAviary(act=act, obs=obs, gui=eval, ctrl_freq=ctrl_freq,
@@ -72,5 +96,5 @@ if __name__ == '__main__':
     print(f'Starting {num_epochs}')
     agent.learn(num_epochs)
 
-    agent.save_stats()
+    end_training(None, None)
     sys.exit()

@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 import numpy as np
+from util import plot_from_json
 import json
 import time
 from tqdm import tqdm
@@ -20,6 +21,7 @@ class PPO():
         # HYPERPARAMETERS
         self.epochs_per_batch = 4
         self.gamma = 0.95
+        self.lam = 0.95
         self.n_updates_per_iteration = 5
         self.clip = 0.2
         self.action_clip = 0.2
@@ -82,14 +84,16 @@ class PPO():
         self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
 
     def learn(self, target_episodes):
-        total_timesteps = 0
-        losses = []
+        """
+        Runs the learning algorithm for target_episodes number of episodes.
+        """
 
+        # tqdm doesn't track to target_episodes since four episodes are run
+        # in each rollout
         for batch_num in tqdm(range(target_episodes//self.epochs_per_batch)):
             # Get training data
-            batch_obs, batch_acts, batch_log_probs, batch_rtgs, timesteps_taken \
-                  = self.rollout()
-            total_timesteps += timesteps_taken
+            batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, \
+                batch_dones = self.rollout()
 
             # don't learn if just evaluating networks
             if self.eval: continue
@@ -97,9 +101,11 @@ class PPO():
             # Find estimated values
             V, _, _ = self.evaluate(batch_obs, batch_acts)
 
-            # Calculate and normalize advantage
-            A_k = batch_rtgs - V.detach()
+            # Calculate and normalize generalized advantage estimate
+            A_k = self.calculate_gae(batch_rewards, batch_vals, batch_dones)
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
+            V = self.critic(batch_obs).squeeze()
+            batch_rtgs = A_k + V.detach()
 
             # Update network weights
             for _ in range(self.n_updates_per_iteration):
@@ -118,8 +124,6 @@ class PPO():
                 
                 critic_loss = nn.MSELoss()(V, batch_rtgs)
 
-                losses.append(actor_loss.cpu().detach().numpy())
-
                 self.actor_optim.zero_grad()
                 actor_loss.backward(retain_graph=True)
                 self.actor_optim.step()
@@ -128,42 +132,60 @@ class PPO():
                 critic_loss.backward()
                 self.critic_optim.step()
 
-            # decrease learning rate
+            # anneal learning rate
             factor = 1-(batch_num / (target_episodes//self.epochs_per_batch))
             self.lr = self.lr * factor
 
     def rollout(self):
+        # batch statistics
         batch_obs = []
         batch_acts = []
         batch_log_probs = []
         batch_rewards = []
-        batch_rtgs = []
+        batch_vals = []
         batch_sums = []
+        batch_dones = []
 
-        n_timesteps = 0
+        # episode statistics
+        ep_rewards = []
+        ep_vals = []
+        ep_dones = []
+
         for _ in range(self.epochs_per_batch):
+            # episode statistics wiped each episode
             ep_rewards = []
+            ep_vals = []
+            ep_dones = []
 
+            # randomize start location
             #self.env.INIT_XYZS = np.expand_dims(np.random.rand(3), 0)
 
+            # initial observation
             obs, info = self.env.reset()
             obs = np.reshape(obs, (-1, 12))[0]
-
             term, trunc = False, False
+
             while not term and not trunc:
                 if self.eval: time.sleep(0.001)
 
-                n_timesteps += 1
-
+                # record done and obs for timestep t
+                ep_dones.append(term or trunc)
                 batch_obs.append(obs)
 
+                # get action and val for timestep t
                 action, log_prob = self.get_action(obs)
                 action = np.reshape(action, (1,4))
 
+                obs = torch.tensor(obs, dtype=torch.float, device=self.device)
+                val = self.critic(obs)
+
+                # get obs for timestep t+1
                 obs, reward, term, trunc, _ = self.env.step(action)
                 obs = np.reshape(obs, (-1, 12))[0]
 
+                # store reward, action, log_probs for timestep t
                 ep_rewards.append(reward)
+                ep_vals.append(val.flatten())
                 batch_acts.append(action)
                 batch_log_probs.append(log_prob)
 
@@ -173,7 +195,11 @@ class PPO():
             self.avgs.append(self.avg_score)
             self.epsilons.append(0)
 
-            batch_rewards.append(ep_rewards)
+            # add episode data to batch
+            batch_rewards.append(np.array(ep_rewards))
+            batch_vals.append(ep_vals)
+            batch_dones.append(ep_dones)
+
             tqdm.write(f'Episode {self.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.scores[-10:]):.2f}\tlr: {self.lr}')
             self.ep_num += 1
 
@@ -182,12 +208,11 @@ class PPO():
         batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
 
         # reward normalization
-        batch_rewards = np.array(batch_rewards)
-        batch_rewards = (batch_rewards - batch_rewards.mean()) / (batch_rewards.std() + 1e-10)
+        #batch_rewards = np.array(batch_rewards)
+        #batch_rewards = (batch_rewards - batch_rewards.mean()) / (batch_rewards.std() + 1e-10)
 
-        batch_rtgs = self.compute_rtgs(batch_rewards)
-
-        return batch_obs, batch_acts, batch_log_probs, batch_rtgs, n_timesteps
+        return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones
+    
 
     def compute_rtgs(self, batch_rews):
         batch_rtgs = []
@@ -249,59 +274,45 @@ class PPO():
 
         return action.cpu().detach().numpy() * self.action_clip, log_prob.cpu().detach()
     
-    def save_stats(self):
+    def save_stats(self, plot, networks):
         """
         Saves training statistics when training is completed or interrupted.
         """
 
-        resp = input('Save training data? [y/N]: ')
+        if plot:
+            if self.avg_score == -np.inf:
+                print('No data to be saved.')
+            else:
+                fname = f'data/training_data_{int(self.avg_score)}.json'
+        
+                data = {
+                    'avgs': self.avgs,
+                    'scores': self.scores,
+                    'epsilons': self.epsilons
+                }
 
-        if 'y' not in resp.lower():
-            print('Not saving data.')
-            self._save_networks()
-            return
+                print(f'\nWriting to {fname}... ', end='')
 
-        if self.avg_score == -np.inf:
-            print('No data to be saved.')
-            return
+                data_json = json.dumps(data)
+                with open(fname, 'w') as f:
+                    f.write(data_json)
 
-        fname = f'../data/training_data_{int(self.avg_score)}.json'
-    
-        data = {
-            'avgs': self.avgs,
-            'scores': self.scores,
-            'epsilons': self.epsilons
-        }
+                print('done.')
 
-        print(f'Writing to {fname}... ', end='')
+                plot_from_json(f'data/training_data_{int(self.avg_score)}.json',
+                               f'plots/{int(self.avg_score)}.png')
 
-        data_json = json.dumps(data)
-        with open(fname, 'w') as f:
-            f.write(data_json)
 
-        print('done.\n\n')
-
-        self._save_networks()
+        if networks:
+            self._save_networks()        
 
     def _save_networks(self):
         """
         Save trained networks.
         """
 
-        resp = input('Save networks? [y/N]: ')
-
-        if 'y' not in resp.lower():
-            print('Not saving networks.')
-            return
-
         print('Saving networks... ', end='')
-        torch.save(self.actor.state_dict(), f'state_dict_actor')
-        torch.save(self.critic.state_dict(), f'state_dict_critic')
+        torch.save(self.actor.state_dict(), f'networks/state_dict_actor')
+        torch.save(self.critic.state_dict(), f'networks/state_dict_critic')
 
-        print('done.')        
-
-if __name__ == '__main__':
-    import gymnasium as gym
-    env = gym.make('Pendulum-v1', render_mode='human')
-    model = PPO(env)
-    model.learn(100000)
+        print('done.')

@@ -102,7 +102,7 @@ class RecoveryAviary(HoverAviary):
              or abs(state[7]) > .4 or abs(state[8]) > .4 # Truncate when the drone is too tilted
         ):
             # should return True - changed for testing
-            return False
+            return True
         else:
             return False
         
