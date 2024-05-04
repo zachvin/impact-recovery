@@ -65,30 +65,39 @@ def end_training(sig, frame):
     tqdm.write(f'\tlambda {agent.lam}')
     tqdm.write(f'\tentropy coeff {agent.entropy_coefficient}')
 
-
     tqdm.write('\n')
     sys.exit()
+
+def quicksave(sig, frame):
+    tqdm.write('========== Quicksaving ==========')
+    global agent
+    agent._save_networks()
+    tqdm.write('============= Done. =============')
 
 
 if __name__ == '__main__':
     # SIMULATION CONTROL
-    ctrl_freq = 240
-    pyb_freq = 240
+    ctrl_freq = 60
+    pyb_freq = 120
 
     eval = args.eval if args.eval else False
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.00 # 0 -> 0.01
-    a_lr = 0.001 # 0.003 or lower
-    c_lr = 0.001
+    entropy_coefficient = 0.01 # 0 -> 0.01
+    a_lr = 3e-4 # 0.003 or lower
+    c_lr = 3e-4
     clip = 0.2
+    gamma = 0.99
+    upi = 5
+    epb = 5
 
     # OTHER
     act = ActionType.RPM
     obs = ObservationType.KIN
 
     signal.signal(signal.SIGINT, end_training)
+    signal.signal(signal.SIGUSR1, quicksave) # kill -10
 
     # SETUP
     env = RecoveryAviary(act=act, obs=obs, gui=eval, ctrl_freq=ctrl_freq,
@@ -96,7 +105,7 @@ if __name__ == '__main__':
     
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
-                c_lr=c_lr, clip=clip)
+                c_lr=c_lr, clip=clip, gamma=gamma, upi=upi, epb=epb)
     
     num_epochs = args.num_epochs if args.num_epochs else 100
     print(f'Starting {num_epochs}')

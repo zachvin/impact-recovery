@@ -7,19 +7,22 @@ from util import gen_random_position, gen_random_orientation, SurfaceExplorer
 import time
 from tqdm import tqdm
 from Record import Memory, Stats
+import signal
+import sys
 
 class PPO():
     def __init__(self, env, eval=False, use_checkpoint=False,
                  entropy_coefficient=0.005, c_lr=0.1, lam=0.99,
                  gamma=0.99, clip=0.2, a_lr=0.001, obs_dim=12,
-                 act_dim=4, anneal=False):
+                 act_dim=4, anneal=False, upi=5, action_clip=1,
+                 epb=5, save_every=50):
         # HYPERPARAMETERS
-        self.epochs_per_batch = 4
+        self.epochs_per_batch = epb
         self.gamma = gamma
         self.lam = lam
-        self.n_updates_per_iteration = 5
+        self.n_updates_per_iteration = upi
         self.clip = clip
-        self.action_clip = 1
+        self.action_clip = action_clip
         self.a_lr = a_lr
         self.c_lr = c_lr
         self.max_a_lr = a_lr
@@ -27,6 +30,7 @@ class PPO():
         self.entropy_coefficient = entropy_coefficient
         self.use_checkpoint = use_checkpoint
         self.anneal = anneal
+        self.save_every = save_every
 
         # SIMULATION CONTROL
         self.env = env
@@ -68,12 +72,12 @@ class PPO():
             #nn.Tanh(),
             #nn.Linear(64, 64),
             #nn.Tanh(),
-            nn.Linear(64, self.act_dim),
+            nn.Linear(64, 1),
         )
 
         if self.use_checkpoint:
-            self.actor.load_state_dict(torch.load(f'networks/state_dict_actor'))
-            self.critic.load_state_dict(torch.load(f'networks/state_dict_critic'))
+            self.actor.load_state_dict(torch.load(f'networks/state_dict_actor.pth'))
+            self.critic.load_state_dict(torch.load(f'networks/state_dict_critic.pth'))
 
         self.actor.to(self.device)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
@@ -89,6 +93,9 @@ class PPO():
         # tqdm doesn't track to target_episodes since four episodes are run
         # per rollout
         for batch_num in tqdm(range(target_episodes//self.epochs_per_batch)):
+            if batch_num > 0 and batch_num % self.save_every == 0:
+                self._save_networks(suffix=f'{batch_num}')
+
             # Get training data
             batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, \
                 batch_dones, batch_rtgs = self.rollout()
@@ -192,7 +199,7 @@ class PPO():
 
                 # get action and val for timestep t
                 action, log_prob = self.get_action(obs)
-                #action = np.reshape(action, (1,self.act_dim))
+                action = np.reshape(action, (1,self.act_dim))
 
                 obs = torch.tensor(obs, dtype=torch.float, device=self.device)
                 #val = self.critic(obs)
@@ -211,7 +218,7 @@ class PPO():
             self.stats.append(sum(ep_rewards), self.a_lr, self.c_lr)
             
             # add episode data to batch
-            batch_rewards.append(np.array(ep_rewards))
+            batch_rewards.append(ep_rewards)
             batch_vals.append(ep_vals)
             batch_dones.append(ep_dones)
 
@@ -219,10 +226,9 @@ class PPO():
             tqdm.write(f'Episode {self.stats.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.stats.scores[-10:]):.2f}\talr: {self.a_lr:.4f}\tclr: {self.c_lr:.4f}')
             self.stats.ep_num += 1
 
-        batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
-        batch_acts = torch.tensor(np.array(batch_acts), dtype=torch.float, device=self.device)
-        batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
-        
+        batch_obs = torch.tensor(batch_obs, dtype=torch.float, device=self.device)
+        batch_acts = torch.tensor(batch_acts, dtype=torch.float, device=self.device)
+        batch_log_probs = torch.tensor(batch_log_probs, dtype=torch.float, device=self.device)
         batch_rtgs = self.compute_rtgs(batch_rewards)
 
         return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones, batch_rtgs
@@ -303,14 +309,14 @@ class PPO():
         if networks:
             self._save_networks()        
 
-    def _save_networks(self):
+    def _save_networks(self, suffix=''):
         """
         Save trained networks.
         """
 
-        tqdm.write('Saving networks... ', end='')
-        torch.save(self.actor.state_dict(), f'networks/state_dict_actor')
-        torch.save(self.critic.state_dict(), f'networks/state_dict_critic')
+        tqdm.write(f'Saving networks at networks/state_dict_xxxxx_{suffix}...', end='')
+        torch.save(self.actor.state_dict(), f'networks/state_dict_actor_{suffix}')
+        torch.save(self.critic.state_dict(), f'networks/state_dict_critic_{suffix}')
 
         tqdm.write('done.')
 
@@ -318,20 +324,39 @@ class PPO():
 import gymnasium as gym
 if __name__ == '__main__':
 
-    entropy_coefficient = 0.01 # 0 -> 0.01
-    a_lr = 0.1 # 0.003 or lower
-    c_lr = 0.001
-    clip = 0.1
+    eval = False
+    use_checkpoint = False
 
-    num_epochs = 1000
+    entropy_coefficient = 0.00 # 0 -> 0.01
+    a_lr = 3e-4
+    c_lr = 3e-4
+    clip = 0.2
+    gamma = 0.99
+    upi = 10
+    epb = 4
 
-    env = env = gym.make("Pendulum-v1")
+    num_epochs = 2000
+
+    env = None
+    env = gym.make('Pendulum-v1')
+    if eval:
+        env = gym.make('Pendulum-v1', render_mode='human')
+
     print(env.observation_space.shape[0], env.action_space.shape[0])
 
-    agent = PPO(env, eval=False, use_checkpoint=False,
+    agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
                 c_lr=c_lr, clip=clip, obs_dim=env.observation_space.shape[0],
-                act_dim=env.action_space.shape[0])
+                act_dim=env.action_space.shape[0], gamma=gamma, upi=upi,
+                epb=epb)
+    
+    def end_training(sig, frame):
+        global agent
+        agent._save_networks()
+        sys.exit()
+
+    signal.signal(signal.SIGINT, end_training)
     
     print(f'Starting {num_epochs}')
     agent.learn(num_epochs)
+    agent._save_networks()
