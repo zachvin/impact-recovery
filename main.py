@@ -8,8 +8,9 @@ from gym_pybullet_drones.envs.HoverAviary import HoverAviary
 
 from RecoveryAviary import RecoveryAviary
 from ppo import PPO
+from util import gen_random_position, gen_random_orientation
 
-import numpy as np
+from tqdm import tqdm
 import sys
 import signal
 import argparse
@@ -56,13 +57,16 @@ def end_training(sig, frame):
     global agent
     agent.save_stats(plot, networks)
 
-    print('Agent hyperparameters:')
-    print(f'\tgamma {agent.gamma}')
-    print(f'\tlambda {agent.lam}')
-    print(f'\tentropy coeff {agent.entropy_coefficient}')
+    # dump hyperparameters
+    tqdm.write('Agent hyperparameters:')
+    tqdm.write(f'\tlearning rate (actor) {agent.max_a_lr}')
+    tqdm.write(f'\tlearning rate (critic) {agent.max_c_lr}')
+    tqdm.write(f'\tgamma {agent.gamma}')
+    tqdm.write(f'\tlambda {agent.lam}')
+    tqdm.write(f'\tentropy coeff {agent.entropy_coefficient}')
 
 
-    print('\n')
+    tqdm.write('\n')
     sys.exit()
 
 
@@ -70,14 +74,15 @@ if __name__ == '__main__':
     # SIMULATION CONTROL
     ctrl_freq = 240
     pyb_freq = 240
-    initial_xyzs = np.expand_dims(np.random.rand(3), 0)
-    initial_xyzs = np.array([[0,0,0]])
+
     eval = args.eval if args.eval else False
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.5 # make higher if converging on local min
-    lr = 0.1
+    entropy_coefficient = 0.00 # 0 -> 0.01
+    a_lr = 0.001 # 0.003 or lower
+    c_lr = 0.001
+    clip = 0.2
 
     # OTHER
     act = ActionType.RPM
@@ -87,10 +92,11 @@ if __name__ == '__main__':
 
     # SETUP
     env = RecoveryAviary(act=act, obs=obs, gui=eval, ctrl_freq=ctrl_freq,
-                         pyb_freq=pyb_freq, initial_xyzs=initial_xyzs)
+                         pyb_freq=pyb_freq)
     
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
-                entropy_coefficient=entropy_coefficient, lr=lr)
+                entropy_coefficient=entropy_coefficient, a_lr=a_lr,
+                c_lr=c_lr, clip=clip)
     
     num_epochs = args.num_epochs if args.num_epochs else 100
     print(f'Starting {num_epochs}')

@@ -3,44 +3,40 @@ import torch
 import torch.nn as nn
 
 import numpy as np
-from util import plot_from_json
-import json
+from util import gen_random_position, gen_random_orientation, SurfaceExplorer
 import time
 from tqdm import tqdm
-
-class Stats():
-    def __init__(self):
-        self.current_average = -np.inf
-        self.average_scores = []
-        self.timesteps = []
-        self.episode_nums = []
+from Record import Memory, Stats
 
 class PPO():
     def __init__(self, env, eval=False, use_checkpoint=False,
-                 entropy_coefficient=0.005, lr=0.01):
+                 entropy_coefficient=0.005, c_lr=0.1, lam=0.99,
+                 gamma=0.99, clip=0.2, a_lr=0.001, obs_dim=12,
+                 act_dim=4, anneal=False):
         # HYPERPARAMETERS
         self.epochs_per_batch = 4
-        self.gamma = 0.95
-        self.lam = 0.95
+        self.gamma = gamma
+        self.lam = lam
         self.n_updates_per_iteration = 5
-        self.clip = 0.2
-        self.action_clip = 0.2
-        self.lr = lr
+        self.clip = clip
+        self.action_clip = 1
+        self.a_lr = a_lr
+        self.c_lr = c_lr
+        self.max_a_lr = a_lr
+        self.max_c_lr = c_lr
         self.entropy_coefficient = entropy_coefficient
         self.use_checkpoint = use_checkpoint
+        self.anneal = anneal
 
         # SIMULATION CONTROL
         self.env = env
-        self.obs_dim = 12
-        self.act_dim = 4
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
         self.eval = eval
+        self.explorer = SurfaceExplorer()
 
         # STATISTICS
-        self.avgs = []
-        self.scores = []
-        self.epsilons = []
-        self.avg_score = 0
-        self.ep_num = 0
+        self.stats = Stats()
 
         # OTHER
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -53,35 +49,37 @@ class PPO():
         # ACTOR
         self.actor = nn.Sequential(
             nn.Linear(self.obs_dim, 64),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(64, 64),
-            nn.Tanh(),
-            nn.Linear(64, 64),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(64, self.act_dim),
-            nn.Tanh(),
+            #nn.Tanh(),
+            #nn.Linear(64, self.act_dim),
+            #nn.Tanh(),
         )
 
         # CRITIC
+        # outputs value of a given state (expected reward)
         self.critic = nn.Sequential(
             nn.Linear(self.obs_dim, 64),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(64, 64),
-            nn.Tanh(),
-            nn.Linear(64, 64),
-            nn.Tanh(),
-            nn.Linear(64, 1),
+            nn.ReLU(),
+            #nn.Tanh(),
+            #nn.Linear(64, 64),
+            #nn.Tanh(),
+            nn.Linear(64, self.act_dim),
         )
 
         if self.use_checkpoint:
-            self.actor.load_state_dict(torch.load(f'state_dict_actor'))
-            self.critic.load_state_dict(torch.load(f'state_dict_critic'))
+            self.actor.load_state_dict(torch.load(f'networks/state_dict_actor'))
+            self.critic.load_state_dict(torch.load(f'networks/state_dict_critic'))
 
         self.actor.to(self.device)
-        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
+        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
 
         self.critic.to(self.device)
-        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
+        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
 
     def learn(self, target_episodes):
         """
@@ -89,11 +87,11 @@ class PPO():
         """
 
         # tqdm doesn't track to target_episodes since four episodes are run
-        # in each rollout
+        # per rollout
         for batch_num in tqdm(range(target_episodes//self.epochs_per_batch)):
             # Get training data
             batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, \
-                batch_dones = self.rollout()
+                batch_dones, batch_rtgs = self.rollout()
 
             # don't learn if just evaluating networks
             if self.eval: continue
@@ -102,12 +100,18 @@ class PPO():
             V, _, _ = self.evaluate(batch_obs, batch_acts)
 
             # Calculate and normalize generalized advantage estimate
-            A_k = self.calculate_gae(batch_rewards, batch_vals, batch_dones)
+            #A_k = self.calculate_gae(batch_rewards, batch_vals, batch_dones)
+            A_k = batch_rtgs - V.detach()
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
-            V = self.critic(batch_obs).squeeze()
-            batch_rtgs = A_k + V.detach()
+
+            #V = self.critic(batch_obs).squeeze()
+            #batch_rtgs = A_k + V.detach()
+
+            #print(f'avg {torch.mean(A_k)}')
 
             # Update network weights
+            critic_losses = []
+            actor_losses = []
             for _ in range(self.n_updates_per_iteration):
 
                 # Calculate value of actions and log probabilities
@@ -124,6 +128,9 @@ class PPO():
                 
                 critic_loss = nn.MSELoss()(V, batch_rtgs)
 
+                critic_losses.append(critic_loss)
+                actor_losses.append(actor_loss)
+
                 self.actor_optim.zero_grad()
                 actor_loss.backward(retain_graph=True)
                 self.actor_optim.step()
@@ -133,8 +140,17 @@ class PPO():
                 self.critic_optim.step()
 
             # anneal learning rate
-            factor = 1-(batch_num / (target_episodes//self.epochs_per_batch))
-            self.lr = self.lr * factor
+            if self.anneal:
+                factor = 1-(batch_num / (target_episodes//self.epochs_per_batch))
+                self.a_lr = self.max_a_lr * factor
+                self.c_lr = self.max_c_lr * factor
+
+            self.actor_optim.param_groups[0]["lr"] = self.a_lr
+            self.critic_optim.param_groups[0]["lr"] = self.c_lr
+
+            # print losses
+            tqdm.write(f'Actor: {sum(actor_losses)/len(actor_losses):.2f}\tCritic: {sum(critic_losses)/len(critic_losses):.2f}')
+            #tqdm.write(f'{self.critic[0].weight}')
 
     def rollout(self):
         # batch statistics
@@ -143,75 +159,73 @@ class PPO():
         batch_log_probs = []
         batch_rewards = []
         batch_vals = []
-        batch_sums = []
         batch_dones = []
+        batch_rtgs = []
 
         # episode statistics
         ep_rewards = []
         ep_vals = []
         ep_dones = []
 
+        # start new episode
         for _ in range(self.epochs_per_batch):
             # episode statistics wiped each episode
             ep_rewards = []
             ep_vals = []
             ep_dones = []
 
-            # randomize start location
-            #self.env.INIT_XYZS = np.expand_dims(np.random.rand(3), 0)
+            # randomize start location and position
+            #self.env.INIT_XYZS = self.explorer.get_loc()
+            #self.env.INIT_RPYS = gen_random_orientation()
 
             # initial observation
             obs, info = self.env.reset()
-            obs = np.reshape(obs, (-1, 12))[0]
+            obs = np.reshape(obs, (-1, self.obs_dim))[0]
             term, trunc = False, False
 
+            # continue until episode ends
             while not term and not trunc:
+                # slow GUI framerate for viewing
                 if self.eval: time.sleep(0.001)
 
-                # record done and obs for timestep t
-                ep_dones.append(term or trunc)
                 batch_obs.append(obs)
 
                 # get action and val for timestep t
                 action, log_prob = self.get_action(obs)
-                action = np.reshape(action, (1,4))
+                #action = np.reshape(action, (1,self.act_dim))
 
                 obs = torch.tensor(obs, dtype=torch.float, device=self.device)
-                val = self.critic(obs)
+                #val = self.critic(obs)
 
                 # get obs for timestep t+1
                 obs, reward, term, trunc, _ = self.env.step(action)
-                obs = np.reshape(obs, (-1, 12))[0]
-
+                
                 # store reward, action, log_probs for timestep t
+                ep_dones.append(term or trunc)
+                #ep_vals.append(val.flatten())
+
                 ep_rewards.append(reward)
-                ep_vals.append(val.flatten())
                 batch_acts.append(action)
                 batch_log_probs.append(log_prob)
 
-            self.scores.append(sum(ep_rewards))
-            batch_sums.append(sum(ep_rewards))
-            self.avg_score = np.mean(self.scores[-100:])
-            self.avgs.append(self.avg_score)
-            self.epsilons.append(0)
-
+            self.stats.append(sum(ep_rewards), self.a_lr, self.c_lr)
+            
             # add episode data to batch
             batch_rewards.append(np.array(ep_rewards))
             batch_vals.append(ep_vals)
             batch_dones.append(ep_dones)
 
-            tqdm.write(f'Episode {self.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.scores[-10:]):.2f}\tlr: {self.lr}')
-            self.ep_num += 1
+            # print episode statistics to screen
+            tqdm.write(f'Episode {self.stats.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.stats.scores[-10:]):.2f}\talr: {self.a_lr:.4f}\tclr: {self.c_lr:.4f}')
+            self.stats.ep_num += 1
 
         batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
         batch_acts = torch.tensor(np.array(batch_acts), dtype=torch.float, device=self.device)
         batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
+        
+        batch_rtgs = self.compute_rtgs(batch_rewards)
 
-        # reward normalization
-        #batch_rewards = np.array(batch_rewards)
-        #batch_rewards = (batch_rewards - batch_rewards.mean()) / (batch_rewards.std() + 1e-10)
-
-        return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones
+        return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones, batch_rtgs
     
 
     def compute_rtgs(self, batch_rews):
@@ -280,27 +294,10 @@ class PPO():
         """
 
         if plot:
-            if self.avg_score == -np.inf:
-                print('No data to be saved.')
+            if self.stats.avg_score == -np.inf:
+                tqdm.write('No data to be saved.')
             else:
-                fname = f'data/training_data_{int(self.avg_score)}.json'
-        
-                data = {
-                    'avgs': self.avgs,
-                    'scores': self.scores,
-                    'epsilons': self.epsilons
-                }
-
-                print(f'\nWriting to {fname}... ', end='')
-
-                data_json = json.dumps(data)
-                with open(fname, 'w') as f:
-                    f.write(data_json)
-
-                print('done.')
-
-                plot_from_json(f'data/training_data_{int(self.avg_score)}.json',
-                               f'plots/{int(self.avg_score)}.png')
+                self.stats.save()
 
 
         if networks:
@@ -311,8 +308,30 @@ class PPO():
         Save trained networks.
         """
 
-        print('Saving networks... ', end='')
+        tqdm.write('Saving networks... ', end='')
         torch.save(self.actor.state_dict(), f'networks/state_dict_actor')
         torch.save(self.critic.state_dict(), f'networks/state_dict_critic')
 
-        print('done.')
+        tqdm.write('done.')
+
+
+import gymnasium as gym
+if __name__ == '__main__':
+
+    entropy_coefficient = 0.01 # 0 -> 0.01
+    a_lr = 0.1 # 0.003 or lower
+    c_lr = 0.001
+    clip = 0.1
+
+    num_epochs = 1000
+
+    env = env = gym.make("Pendulum-v1")
+    print(env.observation_space.shape[0], env.action_space.shape[0])
+
+    agent = PPO(env, eval=False, use_checkpoint=False,
+                entropy_coefficient=entropy_coefficient, a_lr=a_lr,
+                c_lr=c_lr, clip=clip, obs_dim=env.observation_space.shape[0],
+                act_dim=env.action_space.shape[0])
+    
+    print(f'Starting {num_epochs}')
+    agent.learn(num_epochs)

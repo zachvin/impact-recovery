@@ -22,6 +22,7 @@ class RecoveryAviary(HoverAviary):
                  ):
         
         self.INIT_XYZS = initial_xyzs
+        self.INIT_RPYS = initial_rpys
         self.TARGET_POS = np.array([0,0,1])
         self.EPISODE_LEN_SEC = 8
         super().__init__(drone_model=drone_model,
@@ -45,8 +46,15 @@ class RecoveryAviary(HoverAviary):
 
         # reward for approaching target position
         pos_reward = 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))
+
+        # punishment for being on ground
         if state[2] <= 0.015:
             pos_reward -= 1
+        
+        # large reward for getting to target position
+        if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
+            pos_reward += 100
+
         pos_reward = max(pos_reward, 0)
 
         # reward for minimizing roll, pitch, and yaw
@@ -79,7 +87,8 @@ class RecoveryAviary(HoverAviary):
         """
         state = self._getDroneStateVector(0)
         if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
-            return True
+            # changed from True to False for testing
+            return False
         else:
             return False
         
@@ -138,8 +147,9 @@ class RecoveryAviary(HoverAviary):
                 obs = self._getDroneStateVector(i)
                 obs_12[i, :] = np.hstack([obs[0:3], obs[7:10], obs[10:13], obs[13:16]]).reshape(12,)
             ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
-            #### Add action buffer to observation #######################
+            ret = np.reshape(ret, (-1, 12))[0]
             return ret
+            #### Add action buffer to observation #######################
             for i in range(self.ACTION_BUFFER_SIZE):
                 ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
             return ret
