@@ -9,34 +9,33 @@ class Memory():
         Memory object abstracts difficulties with minibatches.
         """
 
-        # everything we need to learn
+        # everything we need for learning
         self.obs = []
         self.acts = []
         self.log_probs = []
         self.advantages = []
         self.rewards_to_go = []
 
-        self.mem_size = 5000
-        self.i = 0
+        self.num_minibatches = 0
+        self.inds = []
 
     def append(self, obs, act, log_prob, adv, rtg):
         """
         Append a new memory to the buffer.
         """
 
-        i = self.i % self.mem_size
+        self.obs.append(obs)
+        self.acts.append(act)
+        self.log_probs.append(log_prob)
+        self.advantages.append(adv)
+        self.rewards_to_go.append(rtg)
 
-        self.obs[i] = obs
-        self.acts[i] = act
-        self.log_probs[i] = log_prob
-        self.advantages[i] = adv
-        self.rewards_to_go[i] = rtg
-
-    def sample(self, size=1000):
+    def sample(self):
         """
         Sample random selection of memories from the buffer.
         """
-        max_mem = min(self.i, self.mem_size)
+
+        chunk = len(self.obs) // self.num_minibatches
         if max_mem < size:
             print('[ERR] Requested too many memories from buffer.')
             return None
@@ -58,6 +57,10 @@ class Stats():
         self.avg_score = -np.inf
         self.best_avg = -np.inf
 
+        self.actor_losses = []
+        self.critic_losses = []
+        self.loss_epochs = []
+
     def append(self, score, a_lr, c_lr):
         """
         Append a new statistic set to memory.
@@ -68,6 +71,14 @@ class Stats():
         self.a_lrs.append(a_lr)
         self.c_lrs.append(c_lr)
         self.avg_score = np.mean(self.scores[-20:])
+
+    def append_loss(self, actor, critic):
+        """
+        Append new loss statistic set to memory.
+        """
+        self.actor_losses.append(actor.item())
+        self.critic_losses.append(critic.item())
+        self.loss_epochs.append(self.ep_num)
         
     def save(self):
         """
@@ -79,7 +90,11 @@ class Stats():
             'avgs': self.avgs,
             'scores': self.scores,
             'a_lrs': self.a_lrs,
-            'c_lrs': self.c_lrs
+            'c_lrs': self.c_lrs,
+
+            'actor_losses': self.actor_losses,
+            'critic_losses': self.critic_losses,
+            'loss_epochs': self.loss_epochs
         }
 
         fname = f'data/training_data_{int(self.avg_score)}.json'

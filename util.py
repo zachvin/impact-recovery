@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 
 # color setup
-DARK = True
+DARK = False
 
 TEXT = '#F3F3F4'
 AVG = '#4B9DFB'
@@ -16,6 +16,7 @@ if not DARK:
     TEXT = '#081821'
     AVG = '#28536B'
     SCORE = '#377495'
+    BACK = 'white'
 
 
 def plot_from_json(src, dst):
@@ -49,7 +50,7 @@ def plot_from_json(src, dst):
         ax1.set_facecolor(BACK)
 
         ax2 = ax1.twinx()
-        ax2.set_ylabel('Learning rate (critic)', color=LR)
+        ax2.set_ylabel('Learning rate', color=LR)
         ax2.plot(x, data['a_lrs'], label='Learning rate (actor)', color=LR)
         ax2.plot(x, data['c_lrs'], label='Learning rate (critic)', color=LR)
         ax2.tick_params(axis='y', labelcolor=LR)
@@ -112,5 +113,5 @@ class SurfaceExplorer():
 
 
 if __name__ == '__main__':
-    num = 73
+    num = -58
     plot_from_json(f'data/training_data_{num}.json', f'plots/{num}.png')

@@ -77,20 +77,22 @@ def quicksave(sig, frame):
 
 if __name__ == '__main__':
     # SIMULATION CONTROL
-    ctrl_freq = 60
-    pyb_freq = 120
+    ctrl_freq = 30
+    pyb_freq = 60
 
     eval = args.eval if args.eval else False
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.01 # 0 -> 0.01
-    a_lr = 3e-4 # 0.003 or lower
-    c_lr = 3e-4
+    entropy_coefficient = 0.5 # 0 -> 0.01
+    a_lr = 7e-5 # 0.003 or lower
+    c_lr = 1e-4
     clip = 0.2
     gamma = 0.99
-    upi = 5
-    epb = 5
+    upi = 32
+    epb = 32
+    num_minibatches = 5
+    anneal = True
 
     # OTHER
     act = ActionType.RPM
@@ -105,7 +107,8 @@ if __name__ == '__main__':
     
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
-                c_lr=c_lr, clip=clip, gamma=gamma, upi=upi, epb=epb)
+                c_lr=c_lr, clip=clip, gamma=gamma, upi=upi, epb=epb,
+                num_minibatches=num_minibatches, anneal=anneal)
     
     num_epochs = args.num_epochs if args.num_epochs else 100
     print(f'Starting {num_epochs}')

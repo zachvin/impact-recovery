@@ -65,7 +65,7 @@ class RecoveryAviary(HoverAviary):
 
         ret = 0.33*pos_reward + 0.33*ori_reward + 0.33*rot_reward
         
-        return pos_reward
+        return 0.67*pos_reward + 0.33*ori_reward
     
         #pos (3), quat (4), rpy, (3), vel (3), ang_v (3), last_clipped_action (4)
         #pos     = state[0:3]
@@ -88,6 +88,7 @@ class RecoveryAviary(HoverAviary):
         state = self._getDroneStateVector(0)
         if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
             # changed from True to False for testing
+            # keep as False, True is dumb
             return False
         else:
             return False

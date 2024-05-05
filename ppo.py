@@ -15,7 +15,7 @@ class PPO():
                  entropy_coefficient=0.005, c_lr=0.1, lam=0.99,
                  gamma=0.99, clip=0.2, a_lr=0.001, obs_dim=12,
                  act_dim=4, anneal=False, upi=5, action_clip=1,
-                 epb=5, save_every=50):
+                 epb=5, save_every=50, num_minibatches=20):
         # HYPERPARAMETERS
         self.epochs_per_batch = epb
         self.gamma = gamma
@@ -31,6 +31,7 @@ class PPO():
         self.use_checkpoint = use_checkpoint
         self.anneal = anneal
         self.save_every = save_every
+        self.num_minibatches = num_minibatches
 
         # SIMULATION CONTROL
         self.env = env
@@ -56,10 +57,9 @@ class PPO():
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
             nn.Linear(64, self.act_dim),
-            #nn.Tanh(),
-            #nn.Linear(64, self.act_dim),
-            #nn.Tanh(),
         )
 
         # CRITIC
@@ -69,15 +69,14 @@ class PPO():
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            #nn.Tanh(),
-            #nn.Linear(64, 64),
-            #nn.Tanh(),
-            nn.Linear(64, 1),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
         )
 
         if self.use_checkpoint:
-            self.actor.load_state_dict(torch.load(f'networks/state_dict_actor.pth'))
-            self.critic.load_state_dict(torch.load(f'networks/state_dict_critic.pth'))
+            self.actor.load_state_dict(torch.load(f'networks/good_actor'))
+            self.critic.load_state_dict(torch.load(f'networks/good_critic'))
 
         self.actor.to(self.device)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
@@ -94,7 +93,7 @@ class PPO():
         # per rollout
         for batch_num in tqdm(range(target_episodes//self.epochs_per_batch)):
             if batch_num > 0 and batch_num % self.save_every == 0:
-                self._save_networks(suffix=f'{batch_num}')
+                self._save_networks(suffix=f'_quicksave')
 
             # Get training data
             batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, \
@@ -111,40 +110,57 @@ class PPO():
             A_k = batch_rtgs - V.detach()
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
-            #V = self.critic(batch_obs).squeeze()
-            #batch_rtgs = A_k + V.detach()
-
-            #print(f'avg {torch.mean(A_k)}')
-
             # Update network weights
             critic_losses = []
             actor_losses = []
             for _ in range(self.n_updates_per_iteration):
 
-                # Calculate value of actions and log probabilities
-                V, curr_log_probs, entropy = self.evaluate(batch_obs, batch_acts)
-                
-                ratios = torch.exp(curr_log_probs - batch_log_probs)
+                # create minibatches
+                num_episodes_in_batch = sum([len(l) for l in batch_rewards])
+                mb_len = num_episodes_in_batch // self.num_minibatches
 
-                surr1 = ratios * A_k
-                surr2 = torch.clamp(ratios, 1-self.clip, 1+self.clip) * A_k
+                # randomize indices
+                inds = np.arange(num_episodes_in_batch)
+                np.random.shuffle(inds)
 
-                entropy_loss = entropy.mean() * self.entropy_coefficient
+                for i in range(self.num_minibatches):
+                    # get chunk of indices for first minibatch
+                    start = mb_len*i
+                    end = mb_len*(i+1)
+                    mb_inds = inds[start:end]
 
-                actor_loss = (-torch.min(surr1, surr2)).mean() - entropy_loss
-                
-                critic_loss = nn.MSELoss()(V, batch_rtgs)
+                    # use chunk indices to make minibatches
+                    mb_obs = batch_obs[mb_inds]
+                    mb_acts = batch_acts[mb_inds]
+                    mb_log_probs = batch_log_probs[mb_inds]
+                    mb_rtgs = batch_rtgs[mb_inds]
+                    mb_A_k = A_k[mb_inds]
 
-                critic_losses.append(critic_loss)
-                actor_losses.append(actor_loss)
+                    # continue computing as normal
+                    # Calculate value of actions and log probabilities
+                    V, curr_log_probs, entropy = self.evaluate(mb_obs, mb_acts)
+                    
+                    ratios = torch.exp(curr_log_probs - mb_log_probs)
 
-                self.actor_optim.zero_grad()
-                actor_loss.backward(retain_graph=True)
-                self.actor_optim.step()
+                    surr1 = ratios * mb_A_k
+                    surr2 = torch.clamp(ratios, 1-self.clip, 1+self.clip) * mb_A_k
 
-                self.critic_optim.zero_grad()
-                critic_loss.backward()
-                self.critic_optim.step()
+                    entropy_loss = entropy.mean() * self.entropy_coefficient
+
+                    actor_loss = (-torch.min(surr1, surr2)).mean() - entropy_loss
+                    
+                    critic_loss = nn.MSELoss()(V, mb_rtgs)
+
+                    critic_losses.append(critic_loss)
+                    actor_losses.append(actor_loss)
+
+                    self.actor_optim.zero_grad()
+                    actor_loss.backward(retain_graph=True)
+                    self.actor_optim.step()
+
+                    self.critic_optim.zero_grad()
+                    critic_loss.backward()
+                    self.critic_optim.step()
 
             # anneal learning rate
             if self.anneal:
@@ -156,7 +172,10 @@ class PPO():
             self.critic_optim.param_groups[0]["lr"] = self.c_lr
 
             # print losses
-            tqdm.write(f'Actor: {sum(actor_losses)/len(actor_losses):.2f}\tCritic: {sum(critic_losses)/len(critic_losses):.2f}')
+            avg_actor_loss = sum(actor_losses)/len(actor_losses)
+            avg_critic_loss = sum(critic_losses)/len(critic_losses)
+            tqdm.write(f'Actor: {avg_actor_loss:.2f}\tCritic: {avg_critic_loss:.2f}')
+            self.stats.append_loss(avg_actor_loss, avg_critic_loss)
             #tqdm.write(f'{self.critic[0].weight}')
 
     def rollout(self):
@@ -206,6 +225,8 @@ class PPO():
 
                 # get obs for timestep t+1
                 obs, reward, term, trunc, _ = self.env.step(action)
+                if trunc:
+                    reward -= 100
                 
                 # store reward, action, log_probs for timestep t
                 ep_dones.append(term or trunc)
@@ -223,12 +244,12 @@ class PPO():
             batch_dones.append(ep_dones)
 
             # print episode statistics to screen
-            tqdm.write(f'Episode {self.stats.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.stats.scores[-10:]):.2f}\talr: {self.a_lr:.4f}\tclr: {self.c_lr:.4f}')
+            tqdm.write(f'Episode {self.stats.ep_num:04} reward: {sum(ep_rewards):.2f}\tavg reward: {np.mean(self.stats.scores[-10:]):.2f}\talr: {self.a_lr:.6f}\tclr: {self.c_lr:.6f}')
             self.stats.ep_num += 1
 
-        batch_obs = torch.tensor(batch_obs, dtype=torch.float, device=self.device)
-        batch_acts = torch.tensor(batch_acts, dtype=torch.float, device=self.device)
-        batch_log_probs = torch.tensor(batch_log_probs, dtype=torch.float, device=self.device)
+        batch_obs = torch.tensor(np.array(batch_obs), dtype=torch.float, device=self.device)
+        batch_acts = torch.tensor(np.array(batch_acts), dtype=torch.float, device=self.device)
+        batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype=torch.float, device=self.device)
         batch_rtgs = self.compute_rtgs(batch_rewards)
 
         return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones, batch_rtgs
@@ -245,7 +266,7 @@ class PPO():
                 discounted_reward = rew + discounted_reward * self.gamma
                 batch_rtgs.insert(0, discounted_reward)
 
-        batch_rtgs = torch.tensor(batch_rtgs, dtype=torch.float, device=self.device)
+        batch_rtgs = torch.tensor(np.array(batch_rtgs), dtype=torch.float, device=self.device)
 
         return batch_rtgs
     
@@ -314,9 +335,9 @@ class PPO():
         Save trained networks.
         """
 
-        tqdm.write(f'Saving networks at networks/state_dict_xxxxx_{suffix}...', end='')
-        torch.save(self.actor.state_dict(), f'networks/state_dict_actor_{suffix}')
-        torch.save(self.critic.state_dict(), f'networks/state_dict_critic_{suffix}')
+        tqdm.write(f'Saving networks at networks/state_dict_xxxxx{suffix}... ', end='')
+        torch.save(self.actor.state_dict(), f'networks/state_dict_actor{suffix}')
+        torch.save(self.critic.state_dict(), f'networks/state_dict_critic{suffix}')
 
         tqdm.write('done.')
 
@@ -333,7 +354,7 @@ if __name__ == '__main__':
     clip = 0.2
     gamma = 0.99
     upi = 10
-    epb = 4
+    epb = 10
 
     num_epochs = 2000
 
