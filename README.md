@@ -20,7 +20,7 @@ A machine-learning solution for righting copter drones after midair impact or lo
 
   > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for parts 3 and 4. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
 
-Setup takes about 3 minutes.
+Setup takes about 3 minutes. It is tested using Python 3.10 on Ubuntu 22.04. I haven't been able to get the PyBullet environment to show GUI properly on WSL.
 
       git clone git@github.com:zachvin/impact-recovery.git
       cd impact-recovery
