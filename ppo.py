@@ -1,12 +1,18 @@
+# Zach Vincent
+# ppo.py
+# Implementation of Proximal Policy Optimization Algorithms (https://arxiv.org/abs/1707.06347) by Schulman, et al. 2017.
+# Adapted from code by Eric Yang Yu (https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8).
+
 from torch.distributions import MultivariateNormal
 import torch
 import torch.nn as nn
+import argparse
 
 import numpy as np
 from util import gen_random_position, gen_random_orientation, SurfaceExplorer
 import time
 from tqdm import tqdm
-from Record import Memory, Stats
+from Record import Stats
 import signal
 import sys
 
@@ -15,7 +21,9 @@ class PPO():
                  entropy_coefficient=0.005, c_lr=0.1, lam=0.99,
                  gamma=0.99, clip=0.2, a_lr=0.001, obs_dim=12,
                  act_dim=4, anneal=False, upi=5, action_clip=1,
-                 epb=5, save_every=50, num_minibatches=20):
+                 epb=5, save_every=50, num_minibatches=20, cp_a=None,
+                 cp_c=None, pybullet=False):
+        
         # HYPERPARAMETERS
         self.epochs_per_batch = epb
         self.gamma = gamma
@@ -39,6 +47,7 @@ class PPO():
         self.act_dim = act_dim
         self.eval = eval
         self.explorer = SurfaceExplorer()
+        self.pybullet = pybullet
 
         # STATISTICS
         self.stats = Stats()
@@ -74,9 +83,11 @@ class PPO():
             nn.Linear(64, 1)
         )
 
+        actor_name = cp_a or 'good_actor'
+        critic_name = cp_c or 'good_critic'
         if self.use_checkpoint:
-            self.actor.load_state_dict(torch.load(f'networks/good_actor'))
-            self.critic.load_state_dict(torch.load(f'networks/good_critic'))
+            self.actor.load_state_dict(torch.load(f'networks/{actor_name}'))
+            self.critic.load_state_dict(torch.load(f'networks/{critic_name}'))
 
         self.actor.to(self.device)
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
@@ -201,8 +212,8 @@ class PPO():
             ep_dones = []
 
             # randomize start location and position
-            #self.env.INIT_XYZS = self.explorer.get_loc()
-            #self.env.INIT_RPYS = gen_random_orientation()
+            self.env.INIT_XYZS = gen_random_position()
+            self.env.INIT_RPYS = gen_random_orientation()
 
             # initial observation
             obs, info = self.env.reset()
@@ -218,10 +229,9 @@ class PPO():
 
                 # get action and val for timestep t
                 action, log_prob = self.get_action(obs)
-                action = np.reshape(action, (1,self.act_dim))
+                if self.pybullet: action = np.reshape(action, (1,self.act_dim))
 
                 obs = torch.tensor(obs, dtype=torch.float, device=self.device)
-                #val = self.critic(obs)
 
                 # get obs for timestep t+1
                 obs, reward, term, trunc, _ = self.env.step(action)
@@ -230,7 +240,6 @@ class PPO():
                 
                 # store reward, action, log_probs for timestep t
                 ep_dones.append(term or trunc)
-                #ep_vals.append(val.flatten())
 
                 ep_rewards.append(reward)
                 batch_acts.append(action)
@@ -255,22 +264,27 @@ class PPO():
         return batch_obs, batch_acts, batch_log_probs, batch_rewards, batch_vals, batch_dones, batch_rtgs
     
 
-    def compute_rtgs(self, batch_rews):
+    def compute_rtgs(self, batch_rewards):
+        """
+        Compute rewards-to-go for each step of each batch. RTGs are calculated
+        as the sum of rewards remaining in the episode multiplied by a discount
+        factor gamma.
+        """
         batch_rtgs = []
 
-        for ep_rews in reversed(batch_rews):
+        for ep_rewards in reversed(batch_rewards):
 
             discounted_reward = 0
-
-            for rew in reversed(ep_rews):
-                discounted_reward = rew + discounted_reward * self.gamma
+            for reward in reversed(ep_rewards):
+                discounted_reward = reward + discounted_reward * self.gamma
                 batch_rtgs.insert(0, discounted_reward)
 
-        batch_rtgs = torch.tensor(np.array(batch_rtgs), dtype=torch.float, device=self.device)
-
-        return batch_rtgs
+        return torch.tensor(np.array(batch_rtgs), dtype=torch.float, device=self.device)
     
     def evaluate(self, batch_obs, batch_acts):
+        """
+        Wrapper function for forward propagation in critic network.
+        """
         V = self.critic(batch_obs).squeeze()
 
         if isinstance(batch_obs, np.ndarray):
@@ -283,6 +297,10 @@ class PPO():
         return V, log_probs, dist.entropy()
     
     def calculate_gae(self, rewards, values, dones):
+        """
+        Calculates generalized advantage estimation. Not used in Part 4 submission.
+        """
+
         batch_advantages = []
         for ep_rews, ep_vals, ep_dones in zip(rewards, values, dones):
             advantages = []
@@ -303,6 +321,10 @@ class PPO():
         return torch.tensor(batch_advantages, dtype=torch.float)
 
     def get_action(self, obs):
+        """
+        Get mean action from probability distribution in actor network.
+        """
+
         if isinstance(obs, np.ndarray):
             obs = torch.tensor(obs, dtype=torch.float, device=self.device)
 
@@ -342,11 +364,26 @@ class PPO():
         tqdm.write('done.')
 
 
-import gymnasium as gym
 if __name__ == '__main__':
+    import gymnasium as gym
 
-    eval = False
-    use_checkpoint = False
+    # args
+    parser = argparse.ArgumentParser(
+        prog='ppo.py',
+        description='Uses PPO on Gymnasium inverted pendulum.'
+    )
+
+    parser.add_argument('--num_epochs', '-n', help='number of epochs to run',
+                        type=int)
+    parser.add_argument('--eval', '-e', help='whether to evaluate network',
+                        action='store_true')
+    parser.add_argument('--checkpoints', '-c', help='whether to use trained networks',
+                        action='store_true')
+
+    args = parser.parse_args()
+
+    eval = False if args.eval is None else args.eval
+    use_checkpoint = False if args.checkpoints is None else args.checkpoints
 
     entropy_coefficient = 0.00 # 0 -> 0.01
     a_lr = 3e-4
@@ -355,8 +392,9 @@ if __name__ == '__main__':
     gamma = 0.99
     upi = 10
     epb = 10
+    anneal = False
 
-    num_epochs = 2000
+    num_epochs = args.num_epochs or 2500
 
     env = None
     env = gym.make('Pendulum-v1')
@@ -369,7 +407,8 @@ if __name__ == '__main__':
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
                 c_lr=c_lr, clip=clip, obs_dim=env.observation_space.shape[0],
                 act_dim=env.action_space.shape[0], gamma=gamma, upi=upi,
-                epb=epb)
+                epb=epb, cp_a='good_actor_pendulum', cp_c='good_actor_critic',
+                anneal=anneal)
     
     def end_training(sig, frame):
         global agent

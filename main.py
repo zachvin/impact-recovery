@@ -15,23 +15,6 @@ import sys
 import signal
 import argparse
 
-# argument parsing
-parser = argparse.ArgumentParser(
-    prog='main.py',
-    description='Runs PPO agent in quadcopter environment'
-)
-
-parser.add_argument('--num_epochs', '-n', help='number of epochs to run',
-                    type=int)
-parser.add_argument('--eval', '-e', help='whether to evaluate network',
-                    action='store_true')
-parser.add_argument('--checkpoints', '-c', help='whether to use trained networks',
-                    action='store_true')
-parser.add_argument('--plot', '-p', help='whether to save and plot output',
-                    action='store_true')
-
-args = parser.parse_args()
-
 def end_training(sig, frame):
     """
     Signal handler saves training data on interrupt.
@@ -76,6 +59,24 @@ def quicksave(sig, frame):
 
 
 if __name__ == '__main__':
+
+    # argument parsing
+    parser = argparse.ArgumentParser(
+        prog='main.py',
+        description='Runs PPO agent in quadcopter environment'
+    )
+
+    parser.add_argument('--num_epochs', '-n', help='number of epochs to run',
+                        type=int)
+    parser.add_argument('--eval', '-e', help='whether to evaluate network',
+                        action='store_true')
+    parser.add_argument('--checkpoints', '-c', help='whether to use trained networks',
+                        action='store_true')
+    parser.add_argument('--plot', '-p', help='whether to save and plot output',
+                        action='store_true')
+
+    args = parser.parse_args()
+
     # SIMULATION CONTROL
     ctrl_freq = 30
     pyb_freq = 60
@@ -84,14 +85,14 @@ if __name__ == '__main__':
     use_checkpoint = args.checkpoints if args.checkpoints else False
 
     # HYPERPARAMETERS
-    entropy_coefficient = 0.5 # 0 -> 0.01
+    entropy_coefficient = 0.01 # 0 -> 0.01
     a_lr = 7e-5 # 0.003 or lower
     c_lr = 1e-4
-    clip = 0.2
+    clip = 0.1
     gamma = 0.99
-    upi = 32
-    epb = 32
-    num_minibatches = 5
+    upi = 16
+    epb = 16
+    num_minibatches = 2
     anneal = True
 
     # OTHER
@@ -108,7 +109,8 @@ if __name__ == '__main__':
     agent = PPO(env, eval=eval, use_checkpoint=use_checkpoint,
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
                 c_lr=c_lr, clip=clip, gamma=gamma, upi=upi, epb=epb,
-                num_minibatches=num_minibatches, anneal=anneal)
+                num_minibatches=num_minibatches, anneal=anneal,
+                pybullet=True, cp_a='good_actor_quad', cp_c='good_critic_quad')
     
     num_epochs = args.num_epochs if args.num_epochs else 100
     print(f'Starting {num_epochs}')
