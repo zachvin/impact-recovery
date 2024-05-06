@@ -4,6 +4,8 @@ Zach Vincent - Neural Networks Semester Project
 
 A machine-learning solution for righting copter drones after midair impact or loss of control. Modern autopilots are capable of hovering in slight winds and maintaining a level horizon after small disturbances, but cannot manage recovery after extreme impacts or volatile winds. As a result, this network aims to provide an autonomous method for mid-flight impact recovery. The solution will be trained using the Gazebo physics simulator, which can be automated and manipulated using ROS and Python.
 
+[Setup](#setup)
+
 [Part 1](#part-one)
 
 [Part 2](#part-two)
@@ -14,24 +16,28 @@ A machine-learning solution for righting copter drones after midair impact or lo
 
 [Acknowledgements](#acknowledgements)
 
-[Setup](#setup)
-
-
 # Setup
 
   > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for parts 3 and 4. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
 
-Setup takes about 5-10 minutes, most of which is spent downloading the simulator. To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). With the virtual environment enabled (I used virtualenv instead of conda): 
+Setup takes about 3 minutes.
 
       git clone git@github.com:zachvin/impact-recovery.git
       cd impact-recovery
+      pip install -r requirements.txt
       python3 main.py -n 100 -e -c -p
 
-The simulator will run for 100 episodes or until it receives an interrupt. Upon interrupt, the user will be prompted whether to save (in `data/`) and plot (in `plots/`) training data and whether to save the trained network. The `-e` and `-c` arguments control whether to show the GUI (Eval mode) and use the pre-trained networks (use Checkpoints), respectively. They will both be set to `False` by default. The above command will automatically plot and save the data, but to plot the data after training, use `util.py` in the following manner:
+The simulator will run for 100 episodes or until it receives an interrupt. Upon interrupt, the user will be prompted whether to save (in `data/`) and plot (in `plots/`) training data and whether to save the trained network. The `-e` and `-c` arguments control whether to show the GUI (Eval mode) and use the pre-trained networks (use Checkpoints), respectively. They will both be set to `False` by default. The program saves the networks repeatedly throughout training as `state_dict_[actor/critic]_quicksave` and at the end as `state_dict_[actor/critic]`, but to save the networks manually without stopping the training, send a `SIGUSR1` signal to the Python process via `kill -10 [PID]`. The `-p` flag will automatically plot and save the data, but to plot the data after training, use `util.py` in the following manner:
 
       python3 util.py -s [score]
 
-Where \[score] is the integer score printed to the screen when the training data was saved. Plotting isn't implemented for the pendulum environment.
+Where \[score] is the integer score printed to the screen when the training data was saved.
+
+To see the PPO-trained network run in the pendulum environment, run
+
+      python3 ppo.py -e -c
+      
+Plotting isn't implemented for the pendulum environment.
 
 
 # Part One
@@ -111,18 +117,6 @@ At ~4000, the drone takes off vertically 10 meters. The data becomes significant
 
 # Part Three
 
-## Setup
-
-  > Although parts 1 and 2 reference the Gazebo simulator with Ardupilot and ROS, a more lightweight environment is used for part 3. This environment is vastly faster than Gazebo and does not require nearly as much code overhead for programmatic interaction and observation. It is based on Pybullet and OpenAI's Gym.
-
-Setup takes about 5-10 minutes, most of which is spent downloading the simulator. To run, first download and install the simulator from [this repository](https://github.com/utiasDSL/gym-pybullet-drones). With the virtual environment enabled (I used virtualenv instead of conda): 
-
-      git clone git@github.com:zachvin/impact-recovery.git
-      cd impact-recovery/src/
-      python3 main.py
-
-The simulator will run for 1,000 episodes or until it receives an interrupt. Upon interrupt, the code will prompt whether to save training data (to be graphed later) and whether to save the trained network. `eval` and `use_checkpoint` in `src/main.py` control whether to show the GUI and use the pre-trained networks, respectively. They will both be set to `True` by default. To plot the training data, change the value for the `num` variable in `util/Plots.py` to the integer shown when the training data is saved.
-
 ## Justification of architecture
 
 ### Layers
@@ -192,3 +186,5 @@ For the future, my only remaining ideas are to continue modifying the number of 
 The code in `ppo.py` is adapted from [this implementation](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8) by Eric Yang Yu.
 
 The code is an implementation of [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) by Schulman, et al. 2017.
+
+The simulator used is based on PyBullet and is found [here](https://github.com/utiasDSL/gym-pybullet-drones).
