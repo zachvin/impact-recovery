@@ -29,9 +29,9 @@ Setup takes about 5-10 minutes, most of which is spent downloading the simulator
 
 The simulator will run for 100 episodes or until it receives an interrupt. Upon interrupt, the user will be prompted whether to save (in `data/`) and plot (in `plots/`) training data and whether to save the trained network. The `-e` and `-c` arguments control whether to show the GUI (Eval mode) and use the pre-trained networks (use Checkpoints), respectively. They will both be set to `False` by default. The above command will automatically plot and save the data, but to plot the data after training, use `util.py` in the following manner:
 
-      python3 util.py -n [score]
+      python3 util.py -s [score]
 
-Where \[score] is the integer score printed to the screen when the training data was saved.
+Where \[score] is the integer score printed to the screen when the training data was saved. Plotting isn't implemented for the pendulum environment.
 
 
 # Part One
@@ -164,11 +164,6 @@ The network does not perform well for this problem. Despite solving test environ
 3. **Learning rate annealing**: It is possible that the poor performance is the result of a static learning rate. My assumption is that, if a static learning rate is the issue, that would be made apparent later in training when the network is making small optimizations to its performance, whereas it currently shows no success at all. As a result, I'm skeptical of that the learning rate is the root problem.
 4. **Longer testing**: It is also possible that the network is improving, but only slowly, which would in fact point to a learning rate issue as mentioned previously. With a much longer training time (several hours, as opposed to ~30mins), the graphs produced from that training may help point to a specific issue.
 
-## Acknowledgements
-The code in `ppo.py` is adapted from [this implementation](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8) by Eric Yang Yu.
-
-The code is an implementation of [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) by Schulman, et al. 2017.
-
 # Part Four
 
 ## Data
@@ -176,6 +171,8 @@ The code is an implementation of [Proximal Policy Optimization Algorithms](https
 The data used in this project comes entirely from a [PyBullet environment](https://github.com/utiasDSL/gym-pybullet-drones/tree/main) built for use with quadcopters. The environment outputs 12 fields for each timestep: XYZ location, RPY orientation, XYZ linear velocity, and angular velocity. The number of samples per epoch is a controllable hyperparameter which I have decreased to 30 samples/second for training efficiency. With a high sampling rate, there was too much data to run backpropagation on several episodes at once, which led to a high degree of training instability. At each timestep, the simulator takes four continuous variables in the range \[-1, 1] that represent a proportion of the hover RPMs for each propellor. When all inputs are 0, the drone hovers; when all are -1, the propellors do not spin, and at 1 they spin at max RPM. 
 
 ## Performance
+
+![image](https://github.com/zachvin/impact-recovery/assets/43306216/2354bfd3-1446-4d51-a0f8-5b40cc7bf226)
 
 Unfortunately, I have not managed to achieve the desired behavior. In some cases, the drone did learn to hold its initial Z position constant, but flew erratically around the XY plane. Note that the initial Z position is about 0.1m, but the target Z position is 1m. In most cases, the network converged on an extremely poor solution; it would immediately tip itself over, causing the epoch to truncate. I am not sure why this occurs, because the initial (random) weights of the networks gave significantly higher scores, but immediately after entering the backpropagation loop, the score often dropped and ended with the tipping behavior. At this point, my best guess is that I need to optimize the size and number of minibatches in the learning loop, which is discussed in more detail below. I implemented each of the three main improvements from Part 3 and did not see improvements from them, either.
 
