@@ -22,6 +22,7 @@ class RecoveryAviary(HoverAviary):
                  ):
         
         self.INIT_XYZS = initial_xyzs
+        self.INIT_RPYS = initial_rpys
         self.TARGET_POS = np.array([0,0,1])
         self.EPISODE_LEN_SEC = 8
         super().__init__(drone_model=drone_model,
@@ -44,22 +45,27 @@ class RecoveryAviary(HoverAviary):
         state = self._getDroneStateVector(0)
 
         # reward for approaching target position
-        position_punishment = np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))
-        if state[2] <= 0.015:
-            position_punishment += 1
+        pos_reward = 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))
 
-        # reward for minimizing rpy
-        orientation_punishment = 0.1 * np.abs(np.linalg.norm(state[7:10]))
+        # punishment for being on ground
+        if state[2] <= 0.015:
+            pos_reward -= 1
+        
+        # large reward for getting to target position
+        if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
+            pos_reward += 100
+
+        pos_reward = max(pos_reward, 0)
+
+        # reward for minimizing roll, pitch, and yaw
+        ori_reward = max(2 - np.abs(np.linalg.norm(state[7:10])), 0)
 
         # reward for minimizing angular velocity
-        rotation_punishment = 0.05 * np.abs(np.linalg.norm(state[13:16]))
+        rot_reward = max(2 - np.abs(np.linalg.norm(state[13:16])), 0)
 
-        ret = 2 - position_punishment - orientation_punishment - rotation_punishment
-        #print(f'pos {position_punishment:.3f}, orn {orientation_punishment:.3f},\
-              #rot {rotation_punishment:.3f}, ret {ret:.3f}')
+        ret = 0.33*pos_reward + 0.33*ori_reward + 0.33*rot_reward
         
-        #ret = max(0, 2 - np.abs(np.linalg.norm(self.TARGET_POS-state[0:3]))*2)
-        return max(0, 2 - position_punishment)
+        return 0.67*pos_reward + 0.33*ori_reward
     
         #pos (3), quat (4), rpy, (3), vel (3), ang_v (3), last_clipped_action (4)
         #pos     = state[0:3]
@@ -81,7 +87,9 @@ class RecoveryAviary(HoverAviary):
         """
         state = self._getDroneStateVector(0)
         if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
-            return True
+            # changed from True to False for testing
+            # keep as False, True is dumb
+            return False
         else:
             return False
         
@@ -104,7 +112,7 @@ class RecoveryAviary(HoverAviary):
              or abs(state[7]) > .4 or abs(state[8]) > .4 # Truncate when the drone is too tilted
         ):
             # should return True - changed for testing
-            return False
+            return True
         else:
             return False
         
@@ -140,8 +148,9 @@ class RecoveryAviary(HoverAviary):
                 obs = self._getDroneStateVector(i)
                 obs_12[i, :] = np.hstack([obs[0:3], obs[7:10], obs[10:13], obs[13:16]]).reshape(12,)
             ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
-            #### Add action buffer to observation #######################
+            ret = np.reshape(ret, (-1, 12))[0]
             return ret
+            #### Add action buffer to observation #######################
             for i in range(self.ACTION_BUFFER_SIZE):
                 ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
             return ret
