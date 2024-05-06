@@ -37,7 +37,11 @@ To see the PPO-trained network run in the pendulum environment, run
 
       python3 ppo.py -e -c
       
-Plotting isn't implemented for the pendulum environment.
+Or train with
+
+      python3 ppo.py
+      
+The largest improvements usually occur around episode 700. Plotting isn't implemented for the pendulum environment.
 
 
 # Part One
