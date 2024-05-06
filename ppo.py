@@ -407,7 +407,7 @@ if __name__ == '__main__':
                 entropy_coefficient=entropy_coefficient, a_lr=a_lr,
                 c_lr=c_lr, clip=clip, obs_dim=env.observation_space.shape[0],
                 act_dim=env.action_space.shape[0], gamma=gamma, upi=upi,
-                epb=epb, cp_a='good_actor_pendulum', cp_c='good_actor_critic',
+                epb=epb, cp_a='good_actor_pendulum', cp_c='good_critic_pendulum',
                 anneal=anneal)
     
     def end_training(sig, frame):
