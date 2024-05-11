@@ -212,8 +212,8 @@ class PPO():
             ep_dones = []
 
             # randomize start location and position
-            self.env.INIT_XYZS = gen_random_position()
-            self.env.INIT_RPYS = gen_random_orientation()
+            #self.env.INIT_XYZS = gen_random_position()
+            #self.env.INIT_RPYS = gen_random_orientation()
 
             # initial observation
             obs, info = self.env.reset()
